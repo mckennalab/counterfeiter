@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::str;
-use rand::prelude::*;
 use rand::prelude::SliceRandom;
 use array_tool::vec::Intersect;
 use std::hash::{Hasher, Hash};
@@ -67,7 +66,7 @@ impl TargetToEvents {
     }
 
     pub fn draw_compatible_event(&self, occupied_sites: &Vec<usize>, max_tries: usize) -> Option<EditEvent> {
-        for i in 0..max_tries {
+        for _i in 0..max_tries {
             let evt = self.draw_weighted_event();
             let intersect = evt.occupied_sites.intersect(occupied_sites.to_owned());
             if intersect.len() == 0 {

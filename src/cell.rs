@@ -1,4 +1,4 @@
-use crate::allreads::{EditEvent, AllEvents, UNEDITED};
+use crate::allreads::{EditEvent, AllEvents};
 use std::borrow::Borrow;
 use rand::Rng;
 
@@ -11,7 +11,7 @@ pub struct Cell {
 impl Cell {
     pub fn new(sites: usize) -> Cell {
         let mut events: Vec<EditEvent> = Vec::new();
-        for i in 0..sites {
+        for _i in 0..sites {
             events.push(EditEvent::new_none());
         }
         assert_eq!(sites, events.len());
