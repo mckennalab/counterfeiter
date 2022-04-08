@@ -4,7 +4,6 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use std::str;
 use rand::prelude::SliceRandom;
-use array_tool::vec::Intersect;
 use std::hash::{Hasher, Hash};
 
 // ************************************************************
@@ -15,8 +14,9 @@ use std::hash::{Hasher, Hash};
 pub struct EditEvent {
     pub event_string: String,
 
-    /// this value is empty for NONE, or other indicators of reversible editing
-    pub occupied_sites: Vec<usize>,
+    /// these are both zero for NONE (WT edits), or other indicators of reversible editing
+    pub offset: i32,
+    pub length: usize,
 }
 
 impl Hash for EditEvent {
@@ -35,14 +35,16 @@ impl Eq for EditEvent {}
 pub(crate) static UNEDITED: &str = "NONE";
 
 impl EditEvent {
-    pub fn new_none() -> EditEvent {
-        let sites = vec![];
-        EditEvent{event_string: UNEDITED.to_string(), occupied_sites: sites }
+    pub fn new_none_vec(size: usize) -> Vec<EditEvent> {
+        let mut newvec: Vec<EditEvent> = Vec::new();
+        for _i in 0..size {
+            newvec.push(EditEvent::new_WT());
+        }
+        newvec
     }
 
-    pub fn new(site: usize) -> EditEvent {
-        let sites = vec![site];
-        EditEvent{event_string: UNEDITED.to_string(), occupied_sites: sites }
+    pub fn new_WT() -> EditEvent {
+        EditEvent{event_string: UNEDITED.to_string(), offset: 0, length: 0 }
     }
 
     pub fn is_mutated(&self) -> bool {
@@ -55,6 +57,7 @@ impl EditEvent {
 // A collection of editing events observed at a target site, with
 // their counts
 //
+#[derive(Clone)]
 pub struct TargetToEvents {
     pub event_to_count: Vec<(EditEvent, usize)>,
 }
@@ -65,14 +68,14 @@ impl TargetToEvents {
         self.event_to_count.choose_weighted(&mut rng, |item| item.1).unwrap().to_owned().0
     }
 
-    pub fn draw_compatible_event(&self, occupied_sites: &Vec<usize>, max_tries: usize) -> Option<EditEvent> {
+    pub fn draw_compatible_event(&self, site: usize, occupied_sites: &Vec<usize>, max_tries: usize) -> Option<EditEvent> {
         for _i in 0..max_tries {
             let evt = self.draw_weighted_event();
-            let intersect = evt.occupied_sites.intersect(occupied_sites.to_owned());
-            if intersect.len() == 0 {
+
+            let min_site = (site as i32 + evt.offset) as usize;
+            let max_mite = min_site + evt.length;
+            if !occupied_sites.contains(&min_site) && !occupied_sites.contains(&max_mite) {
                 return Some(evt);
-            } else {
-                println!("DRAW---")
             }
         }
         None
@@ -87,7 +90,17 @@ pub struct AllEvents {
     pub targets_to_events: HashMap<usize, TargetToEvents>,
 }
 
-
+impl AllEvents {
+    /// Create a new AllEvents with the old_sites vector enumerating each new site in the
+    /// produced AllEvents.
+    pub fn emulate_sites(&self, old_sites: Vec<usize>) -> AllEvents {
+        let mut targets_to_events : HashMap<usize, TargetToEvents> = HashMap::new();
+        old_sites.iter().enumerate().for_each(|(index,old_site)| {
+            targets_to_events.insert(index,self.targets_to_events[old_site].clone());
+        });
+        AllEvents{targets_to_events}
+    }
+}
 // ************************************************************
 //
 // handle reading an allEventCounts file into an AllEvents object
@@ -98,15 +111,9 @@ pub fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
     Ok(io::BufReader::new(file).lines())
 }
 
-pub fn read_all_read_counts(filename: &String, target_count: usize) -> Option<AllEvents> {
+pub fn read_all_read_counts(filename: &String) -> Option<AllEvents> {
 
     let mut targets_to_events: HashMap<usize, HashMap<EditEvent, usize>> = HashMap::new();
-
-    for i in 0..target_count {
-        let event_to_count: HashMap<EditEvent, usize> = HashMap::new();
-        let target_to_events = event_to_count;
-        targets_to_events.insert(i,target_to_events);
-    }
 
     if let Ok(mut lines) = read_lines(filename) {
         lines.next();
@@ -116,6 +123,16 @@ pub fn read_all_read_counts(filename: &String, target_count: usize) -> Option<Al
                 let split = ip.split("\t");
                 let columns: Vec<&str> = split.collect();
                 let edits: Vec<&str> = columns[0].split("_").collect();
+
+                // if our target_to_events hasn't been setup, use the first line to create the mappings
+                if targets_to_events.len() == 0 {
+                    for i in 0..edits.len() {
+                        let event_to_count: HashMap<EditEvent, usize> = HashMap::new();
+                        let target_to_events = event_to_count;
+                        targets_to_events.insert(i,target_to_events);
+                    }
+                }
+
                 let count: usize = columns[2].parse::<usize>().unwrap();
 
                 let mut event_to_targets: HashMap<String, Vec<usize>> = HashMap::new();
@@ -125,13 +142,12 @@ pub fn read_all_read_counts(filename: &String, target_count: usize) -> Option<Al
                 });
 
                 event_to_targets.iter().for_each(|(event_string, sites)| {
-                    for site in sites {
-                        let evt = EditEvent { event_string: event_string.to_string(), occupied_sites: sites.to_vec() };
+                    sites.iter().enumerate().for_each(|(index,site)| {
+                        let evt = EditEvent { event_string: event_string.to_string(), offset: -1 * index as i32, length: sites.len()};
                         let contains_key = targets_to_events[site].contains_key(&evt);
                         let new_value = count + if contains_key { targets_to_events[site][&evt]} else { 0 };
                         targets_to_events.get_mut(site).unwrap().insert(evt, new_value);
-
-                    }
+                    });
                 });
             }
         }
@@ -139,7 +155,7 @@ pub fn read_all_read_counts(filename: &String, target_count: usize) -> Option<Al
 
     // now make this into our structured data
     let mut targets_to_events_final: HashMap<usize, TargetToEvents> = HashMap::new();
-    for i in 0..target_count {
+    for i in 0..targets_to_events.len() {
         let tte = TargetToEvents{event_to_count: targets_to_events.get_mut(&i).unwrap().into_iter().map(|(k, v)| (k.to_owned(),v.clone())).collect()};
         targets_to_events_final.insert(i, tte);
     }

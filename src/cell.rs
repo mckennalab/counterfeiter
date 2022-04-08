@@ -1,5 +1,4 @@
 use crate::allreads::{EditEvent, AllEvents};
-use std::borrow::Borrow;
 use rand::Rng;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -12,7 +11,7 @@ impl Cell {
     pub fn new(sites: usize) -> Cell {
         let mut events: Vec<EditEvent> = Vec::new();
         for _i in 0..sites {
-            events.push(EditEvent::new_none());
+            events.push(EditEvent::new_WT());
         }
         assert_eq!(sites, events.len());
         Cell{events}
@@ -24,40 +23,51 @@ impl Cell {
 
         // for each cell we've been asked to make
         for i in 0..cell_count {
-            let mut new_cell_events: Vec<EditEvent> = Vec::new();
+            let mut new_cell_events= self.events.clone();
+            let mut cnt = 0;
 
             // for each event location
-            self.events.iter().for_each(|event| {
+            self.events.iter().enumerate().for_each(|(index,event)| {
+                cnt += 1;
                 let rando: f64 = rng.gen();
-
+                let occupied_sites = Cell::occupied_sites(&new_cell_events);
                 // if it's been mutated, leave it be. Otherwise try to mutate it
-                if event.is_mutated() {
-                    new_cell_events.push(event.clone());
-                }
-                else if rando <= mutation_rate {
-                    let new_event = events.targets_to_events[&i].draw_compatible_event(event.occupied_sites.borrow(), 10);
+                if rando <= mutation_rate && !event.is_mutated() {
+                    let new_event = events.targets_to_events[&i].draw_compatible_event(index, &occupied_sites, 10);
                     match new_event {
                         Some(x) => {
-                            println!("{}",x.event_string);
-                            new_cell_events.push(x)
+                            let low_values = vec![index as i32 + x.offset,0];
+                            let high_values = vec![(index as i32 + x.offset) + x.length as i32,self.events.len() as i32];
+
+                            for i in (*low_values.iter().max().unwrap() as usize)..(*high_values.iter().min().unwrap() as usize) {
+                                new_cell_events[i as usize] = x.clone();
+                            }
                         },
                         None => {
-                            println!("NO DRAW ");
-                            new_cell_events.push(EditEvent::new(i))
+                            // do nothing for now
                         },
                     }
+                } else {
+                    new_cell_events[index] = event.clone();
                 }
             });
+            assert_eq!(self.events.len(), cnt);
+            assert_eq!(self.events.len(), new_cell_events.len());
             ret_cell.push(Cell{events: new_cell_events})
         }
         ret_cell
     }
 
     pub fn to_comp_string(&self) -> String {
-        let ret = self.events.iter().map(|k| {k.event_string.to_owned()}).collect::<Vec<String>>().join("_");
-        //println!("ret {}",ret);
-        ret
+        self.events.iter().map(|k| {k.event_string.to_owned()}).collect::<Vec<String>>().join("_")
+    }
 
+    pub fn edited_rate(&self) -> f64 {
+        self.events.iter().map(|k| {k.is_mutated() as u8 as f64}).sum::<f64>() / (self.events.len() as f64)
+    }
+
+    pub fn occupied_sites(current_edits: &Vec<EditEvent>) -> Vec<usize> {
+        current_edits.iter().enumerate().filter(|(index,edit)| edit.is_mutated()).map(|(index,edit)| index).collect()
     }
 }
 
