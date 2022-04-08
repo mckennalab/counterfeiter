@@ -62,7 +62,7 @@ fn main() {
             avg_editing_rate += cl.edited_rate();
         };
         println!("Number of cells: {}, number of unique alleles: {}, editing rate: {}",new_cells.len(),books.len(), avg_editing_rate/(new_cells.len() as f64));
-        println!("Book 1: {}",books.iter().next().unwrap());
+        //println!("Book 1: {}",books.iter().next().unwrap());
         cells = new_cells;
     }
 }
