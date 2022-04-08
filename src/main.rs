@@ -7,6 +7,8 @@ extern crate rand;
 extern crate array_tool;
 
 use std::collections::HashSet;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 
 use clap::Parser;
 
@@ -23,6 +25,9 @@ struct Args {
 
     #[clap(long)]
     allreads: String,
+
+    #[clap(long)]
+    name: String,
 
     #[clap(long)]
     output: String,
@@ -42,7 +47,12 @@ fn main() {
 
     let known_events = read_all_read_counts(&parameters.allreads).unwrap();
 
-    let _output = File::create(parameters.output).unwrap();
+    let mut output = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(parameters.output)
+        .unwrap();
+    writeln!(output, "name\ttargetCount\teditRate\tcells\tuniqueBarcodes\teditingRate");
 
     let enumerated = parameters.enumerate.split(",").collect::<Vec<&str>>().iter().map(|x| usize::from_str(x).unwrap()).collect();
     let known_events = known_events.emulate_sites(enumerated);
@@ -61,6 +71,7 @@ fn main() {
             books.insert(cl.to_comp_string());
             avg_editing_rate += cl.edited_rate();
         };
+        writeln!(output, "{}\t{}\t{}\t{}\t{}\t{}",parameters.name,parameters.targets,parameters.rate,new_cells.len(),books.len(),avg_editing_rate/(new_cells.len() as f64));
         println!("Number of cells: {}, number of unique alleles: {}, editing rate: {}",new_cells.len(),books.len(), avg_editing_rate/(new_cells.len() as f64));
         //println!("Book 1: {}",books.iter().next().unwrap());
         cells = new_cells;
