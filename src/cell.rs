@@ -1,27 +1,26 @@
-use crate::allreads::{EditEvent, AllEvents};
+use std::collections::HashMap;
+use crate::allreads::{EditEvent, AllEvents, EventIndex, EventPosition, WT_INDEX};
 use rand::Rng;
+use nohash_hasher::NoHashHasher;
 
+/// A cell is a collection of events at target sites. This struct is kept as minimal
+/// as possible to reduce memory usage, and events and sites are referred to by index.
+/// The cells are passed the relevent look-up object when they 'split' to create new cells.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct Cell {
-    pub events: Vec<EditEvent>,
+    pub events: HashMap<EventPosition, EventIndex>,
 }
 
 
 impl Cell {
-    pub fn new(sites: usize) -> Cell {
-        let mut events: Vec<EditEvent> = Vec::new();
-        for _i in 0..sites {
-            events.push(EditEvent::new_WT());
-        }
-        assert_eq!(sites, events.len());
-        Cell{events}
+    pub fn new(sites: Vec<EventPosition>) -> Cell {
+        Cell{events: sites.map(|x| (x,WT_INDEX)).collect()}
     }
 
     pub fn split(&self, cell_count: usize, mutation_rate: f64, events: &AllEvents) -> Vec<Cell> {
         let mut ret_cell: Vec<Cell> = Vec::new();
         let mut rng = rand::thread_rng();
 
-        // for each cell we've been asked to make
         for i in 0..cell_count {
             let mut new_cell_events= self.events.clone();
             let mut cnt = 0;
@@ -66,8 +65,8 @@ impl Cell {
         self.events.iter().map(|k| {k.is_mutated() as u8 as f64}).sum::<f64>() / (self.events.len() as f64)
     }
 
-    pub fn occupied_sites(current_edits: &Vec<EditEvent>) -> Vec<usize> {
-        current_edits.iter().enumerate().filter(|(index,edit)| edit.is_mutated()).map(|(index,edit)| index).collect()
+    pub fn occupied_sites(current_edits: &HashMap<EventPosition,EventIndex>) -> Vec<usize> {
+        current_edits.iter().enumerate().filter(|(index,edit)| edit.1 != WT_INDEX).map(|(index,edit)| index).collect()
     }
 }
 

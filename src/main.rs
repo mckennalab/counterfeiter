@@ -47,12 +47,9 @@ fn main() {
 
     let known_events = read_all_read_counts(&parameters.allreads).unwrap();
 
-    let mut output = OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(parameters.output)
-        .unwrap();
-    writeln!(output, "name\ttargetCount\teditRate\tcells\tuniqueBarcodes\teditingRate");
+    let mut output = File::create(parameters.output).unwrap();
+
+    writeln!(output, "name\ttargetCount\teditRate\tcells\tuniqueBarcodes\teditingRate").expect("Couldn't write to output file");
 
     let enumerated = parameters.enumerate.split(",").collect::<Vec<&str>>().iter().map(|x| usize::from_str(x).unwrap()).collect();
     let known_events = known_events.emulate_sites(enumerated);

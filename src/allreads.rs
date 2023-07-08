@@ -6,10 +6,15 @@ use std::str;
 use rand::prelude::SliceRandom;
 use std::hash::{Hasher, Hash};
 
-// ************************************************************
-//
-// The base-level editing event with the number of sites it covers
-//
+// the current simulation caps this at 65K unique events -- we can raise this in the future
+pub type EventIndex = u16;
+
+// two reserved indices -- the wildtype sequence and an unknown event
+pub const WT_INDEX: EventIndex = 0;
+pub const UNKNOWN_INDEX: EventIndex = 1;
+
+pub type EventPosition = u16;
+
 #[derive(PartialOrd, Ord, Clone)]
 pub struct EditEvent {
     pub event_string: String,
@@ -60,6 +65,7 @@ impl EditEvent {
 #[derive(Clone)]
 pub struct TargetToEvents {
     pub event_to_count: Vec<(EditEvent, usize)>,
+    pub event_to_eventID: HashMap<EditEvent, EventIndex>,
 }
 
 impl TargetToEvents {
