@@ -6,15 +6,6 @@ use std::str;
 use rand::prelude::SliceRandom;
 use std::hash::{Hasher, Hash};
 
-// the current simulation caps this at 65K unique events -- we can raise this in the future
-pub type EventIndex = u16;
-
-// two reserved indices -- the wildtype sequence and an unknown event
-pub const WT_INDEX: EventIndex = 0;
-pub const UNKNOWN_INDEX: EventIndex = 1;
-
-pub type EventPosition = u16;
-
 #[derive(PartialOrd, Ord, Clone)]
 pub struct EditEvent {
     pub event_string: String,

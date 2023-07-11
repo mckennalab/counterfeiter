@@ -1,20 +1,18 @@
 
-mod allreads;
 mod cell;
+mod genome;
+mod lineagemodels {
+    pub mod model;
+    pub mod crispr_bit;
+}
 
 extern crate lazy_static;
 extern crate rand;
 extern crate array_tool;
 
-use std::collections::HashSet;
-use std::fs::OpenOptions;
 use std::io::prelude::*;
 
 use clap::Parser;
-
-use allreads::read_all_read_counts;
-use cell::Cell;
-use std::fs::File;
 use std::str::FromStr;
 
 #[derive(Parser, Debug)]
@@ -45,7 +43,7 @@ struct Args {
 fn main() {
     let parameters = Args::parse();
 
-    let known_events = read_all_read_counts(&parameters.allreads).unwrap();
+    /*let known_events = read_all_read_counts(&parameters.allreads).unwrap();
 
     let mut output = File::create(parameters.output).unwrap();
 
@@ -72,5 +70,5 @@ fn main() {
         println!("Number of cells: {}, number of unique alleles: {}, editing rate: {}",new_cells.len(),books.len(), avg_editing_rate/(new_cells.len() as f64));
         //println!("Book 1: {}",books.iter().next().unwrap());
         cells = new_cells;
-    }
+    }*/
 }
