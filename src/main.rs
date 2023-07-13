@@ -10,22 +10,28 @@ extern crate lazy_static;
 extern crate rand;
 extern crate array_tool;
 
-use std::io::prelude::*;
-
+use std::collections::HashMap;
 use clap::Parser;
-use std::str::FromStr;
+use crate::cell::Cell;
+use crate::lineagemodels::crispr_bit::{CRISPRBitRate, CRISPRBits};
+use crate::lineagemodels::model::SimpleDivision;
+use crate::lineagemodels::model::LineageModel;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(long)]
-    targets: usize,
 
     #[clap(long)]
-    allreads: String,
+    left: f32,
 
     #[clap(long)]
-    name: String,
+    right: f32,
+
+    #[clap(long)]
+    both: f32,
+
+    #[clap(long)]
+    reedit: f32,
 
     #[clap(long)]
     output: String,
@@ -34,41 +40,50 @@ struct Args {
     generations: usize,
 
     #[clap(long)]
-    enumerate: String,
-
-    #[clap(long)]
-    rate: f64,
+    intergrations: usize,
 }
 
 fn main() {
     let parameters = Args::parse();
 
-    /*let known_events = read_all_read_counts(&parameters.allreads).unwrap();
+// store the relationship between children and parents
+    let mut parent_child_map: HashMap<usize, Vec<usize>> = HashMap::new();
 
-    let mut output = File::create(parameters.output).unwrap();
+    // our starting balance rate
+    let total = parameters.left + parameters.right + parameters.both;
+    assert!(total < 1.0);
+    let neither = 1.0 - total;
 
-    writeln!(output, "name\ttargetCount\teditRate\tcells\tuniqueBarcodes\teditingRate").expect("Couldn't write to output file");
+    let rates = CRISPRBitRate::new(neither, parameters.left, parameters.right, parameters.both, parameters.reedit);
+    let cBits = CRISPRBits::new(&parameters.intergrations, &1, vec![rates.clone()]);
+    let simple_division = SimpleDivision { offspring_count: 2 };
 
-    let enumerated = parameters.enumerate.split(",").collect::<Vec<&str>>().iter().map(|x| usize::from_str(x).unwrap()).collect();
-    let known_events = known_events.emulate_sites(enumerated);
+    let mut current_cells = vec![Cell::new()].iter().map(|x| cBits.transform(x)).next().unwrap();
+    let mut generations: std::collections::HashMap<usize, Vec<Cell>> = HashMap::new();
+    for i in 0..parameters.generations {
+        let mut next_cells = Vec::new();
 
-    let mut cells : Vec<Cell> = Vec::new();
-    cells.push(Cell::new(parameters.targets));
+        generations.insert(i, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
-    for _i in 0..parameters.generations {
-        let mut new_cells : Vec<Cell> = Vec::new();
-        for cell in &cells {
-            cell.split(2,parameters.rate, &known_events).iter().for_each(|ncell| new_cells.push(ncell.to_owned()));
+        for mut cell in current_cells {
+            let parent_id = cell.id;
+
+            let generated_children = cBits.transform(&mut cell).iter().
+                flat_map(|x| simple_division.transform(x)).collect::<Vec<Cell>>();
+
+            for child in generated_children {
+                let child_id = child.id;
+                parent_child_map.entry(parent_id).or_insert(Vec::new()).push(child_id);
+                next_cells.push(child);
+            }
         }
-        let mut books = HashSet::new();
-        let mut avg_editing_rate = 0.0;
-        for cl in new_cells.clone().iter() {
-            books.insert(cl.to_comp_string());
-            avg_editing_rate += cl.edited_rate();
-        };
-        writeln!(output, "{}\t{}\t{}\t{}\t{}\t{}",parameters.name,parameters.targets,parameters.rate,new_cells.len(),books.len(),avg_editing_rate/(new_cells.len() as f64));
-        println!("Number of cells: {}, number of unique alleles: {}, editing rate: {}",new_cells.len(),books.len(), avg_editing_rate/(new_cells.len() as f64));
-        //println!("Book 1: {}",books.iter().next().unwrap());
-        cells = new_cells;
-    }*/
+
+        println!("{}: {}, {}", i, next_cells.len(), next_cells.iter().next().unwrap().id);
+        current_cells = next_cells;
+    }
+
+    generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
+
+    CRISPRBits::to_newick_tree(&parent_child_map, &"test_tree.newick".to_string());
+    CRISPRBits::to_mix_input(generations.get(&parameters.generations).unwrap(), &cBits, &"test_mix_input.txt".to_string());
 }

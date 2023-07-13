@@ -4,11 +4,7 @@ use crate::lineagemodels::model::{EventOutcomeIndex, EventPosition};
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[repr(u8)]
 pub enum Genome {
-    MITOCHONDRIAL(usize),
-    NUCLEAR(usize),
     CRISPRBits(usize),
-    THREE_D_POSITION(usize),
-    FOUR_D_POSITION(usize),
 }
 
 #[derive(Clone, Debug)]

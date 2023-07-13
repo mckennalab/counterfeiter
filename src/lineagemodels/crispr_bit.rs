@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::File;
 use rand::Rng;
 use crate::cell::Cell;
 use crate::genome::{Genome, GenomeEventLookup};
@@ -6,23 +7,24 @@ use weighted_rand::table::WalkerTable;
 use weighted_rand::builder::WalkerTableBuilder;
 use weighted_rand::builder::NewBuilder;
 use crate::lineagemodels::model::{EventOutcomeIndex, EventPosition, LineageModel};
+use std::io::Write;
 
 #[derive(Clone, Debug)]
 pub struct CRISPRBitRate {
-    none: f64,
-    left: f64,
-    right: f64,
-    both: f64,
-    bind_modified_target: f64, // how often a modified target is bound by CRISPR and re-edited
+    none: f32,
+    left: f32,
+    right: f32,
+    both: f32,
+    bind_modified_target: f32,
+    // how often a modified target is bound by CRISPR and re-edited
     weighted_draw: WalkerTable,
 }
 
 impl CRISPRBitRate {
-    pub fn new(none: f32, left: f32, right: f32, both: f32, bind_modified_target: f64) -> CRISPRBitRate {
-        let mut weighted_draw = WalkerTableBuilder::new(&vec![none, left, right, both]).build();
-        CRISPRBitRate{none: (none as f64), left: (left as f64), right: (right as f64), both: (both as f64), bind_modified_target, weighted_draw}
+    pub fn new(none: f32, left: f32, right: f32, both: f32, bind_modified_target: f32) -> CRISPRBitRate {
+        let weighted_draw = WalkerTableBuilder::new(&vec![none, left, right, both]).build();
+        CRISPRBitRate { none, left, right, both, bind_modified_target, weighted_draw }
     }
-
 }
 
 pub struct CRISPRBits {
@@ -38,7 +40,7 @@ impl CRISPRBits {
     const BOTH: EventOutcomeIndex = 3;
 
     pub fn new(int_count: &usize, targets_per_integration: &usize, rates: Vec<CRISPRBitRate>) -> CRISPRBits {
-        CRISPRBits{
+        CRISPRBits {
             integration_count: *int_count,
             targets_per_integration: *targets_per_integration,
             rates,
@@ -75,17 +77,17 @@ impl CRISPRBits {
             }
             &CRISPRBits::LEFT => {
                 let nxt = CRISPRBits::index_to_outcome(&self.rates[*position].weighted_draw.next());
-                let mut rng: f64 = rand::thread_rng().gen();
+                let rng: f32 = rand::thread_rng().gen();
                 match (nxt, rng) {
-                    (CRISPRBits::BOTH,x) if x < self.rates[*position].bind_modified_target => CRISPRBits::BOTH,
+                    (CRISPRBits::BOTH, x) if x < self.rates[*position].bind_modified_target => CRISPRBits::BOTH,
                     _ => CRISPRBits::LEFT,
                 }
             }
             &CRISPRBits::RIGHT => {
                 let nxt = CRISPRBits::index_to_outcome(&self.rates[*position].weighted_draw.next());
-                let mut rng: f64 = rand::thread_rng().gen();
+                let rng: f32 = rand::thread_rng().gen();
                 match (nxt, rng) {
-                    (CRISPRBits::BOTH,x) if x < self.rates[*position].bind_modified_target => CRISPRBits::BOTH,
+                    (CRISPRBits::BOTH, x) if x < self.rates[*position].bind_modified_target => CRISPRBits::BOTH,
                     _ => CRISPRBits::RIGHT,
                 }
             }
@@ -94,18 +96,96 @@ impl CRISPRBits {
             }
         }
     }
+
+
+    pub fn to_mix_input(cells: &Vec<Cell>, cBits: &CRISPRBits, output: &String) {
+        let mut cell_to_output = HashMap::new();
+        let mut event_len: Option<usize> = None;
+        for cell in cells {
+            cell_to_output.insert(cell.id, cBits.to_mix_array(&cell));
+            if event_len.is_none() {
+                event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
+            } else {
+                assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+            }
+        }
+
+        // filter out columns that are all one value
+        let mut kept_columns = Vec::new();
+        for i in 0..event_len.unwrap() {
+            let mut counts = HashMap::new();
+            let mut values = cell_to_output.iter().for_each(|(k, v)| *counts.entry(v[i]).or_insert(0) += 1);
+            if counts.len() > 1 {
+                kept_columns.push(i);
+            }
+        }
+        let mut out = File::create(output).unwrap();
+        write!(out, "\t{}\t{}\n", cell_to_output.len(), kept_columns.len()).unwrap();
+        cell_to_output.iter().for_each(|(k, v)| {
+            write!(out, "{:<10}\t{}\n", format!("n{}", k), kept_columns.iter().map(|x| if v[*x] == 0 { "0".to_string() } else { "1".to_string() }).collect::<Vec<String>>().join("")).unwrap();
+        });
+    }
+
+    pub fn to_mix_input_full(generations: HashMap<usize, Vec<Cell>>, cBits: &CRISPRBits, output: &String) {
+        let mut cell_to_output = HashMap::new();
+        let mut event_len: Option<usize> = None;
+        for (generation, cells) in generations {
+            for cell in cells {
+                cell_to_output.insert(cell.id, cBits.to_mix_array(&cell));
+                if event_len.is_none() {
+                    event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
+                } else {
+                    assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+                }
+            }
+        }
+        // filter out columns that are all one value
+        let mut kept_columns = Vec::new();
+        for i in 0..event_len.unwrap() {
+            let mut counts = HashMap::new();
+            let mut values = cell_to_output.iter().for_each(|(k, v)| *counts.entry(v[i]).or_insert(0) += 1);
+            if counts.len() > 1 {
+                kept_columns.push(i);
+            }
+        }
+        let mut out = File::create(output).unwrap();
+        write!(out, "\t{}\t{}\n", cell_to_output.len(), kept_columns.len()).unwrap();
+        cell_to_output.iter().for_each(|(k, v)| {
+            write!(out, "{:<10}\t{}\n", format!("n{}", k), kept_columns.iter().map(|x| if v[*x] == 0 { "0".to_string() } else { "1".to_string() }).collect::<Vec<String>>().join("")).unwrap();
+        });
+    }
+
+    pub fn to_newick_tree(parent_child_map: &HashMap<usize, Vec<usize>>, output: &String) {
+        let mut out = File::create(output).unwrap();
+        write!(out, "{};\n", CRISPRBits::recursive_tree_builder(parent_child_map, &0)).expect("Unable to write file");
+    }
+
+    pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
+        match parent_child_map.contains_key(current_index) {
+            true => {
+                let children = parent_child_map.get(current_index).unwrap();
+                //format!("(({})n{})", children.iter().map(|x| recursive_tree_builder(parent_child_map, x)).collect::<Vec<String>>().join(","), current_index)
+                format!("({})", children.iter().map(|x| CRISPRBits::recursive_tree_builder(parent_child_map, x)).collect::<Vec<String>>().join(","))
+            }
+            false => {
+                //println!("Done at {}",current_index);
+                format!("n{}", current_index)
+            }
+        }
+    }
+
 }
 
 impl LineageModel for CRISPRBits {
-
     fn estimated_event_space(&self) -> usize {
         self.targets_per_integration * self.integration_count
     }
 
-    fn transform(&self, input_cell: &mut Cell) -> Vec<Cell> {
-        assert_eq!(self.targets_per_integration,self.rates.len());
+    fn transform(&self, input_cell: &Cell) -> Vec<Cell> {
+        let mut ic = input_cell.pure_clone();
+        assert_eq!(self.targets_per_integration, self.rates.len());
         (0..self.integration_count).for_each(|i| {
-            let mut existing_events = input_cell.events.entry(
+            let existing_events = ic.events.entry(
                 Genome::CRISPRBits(i)).or_insert(GenomeEventLookup::new());
 
             (0..self.targets_per_integration).for_each(|t| {
@@ -116,38 +196,68 @@ impl LineageModel for CRISPRBits {
                                    map_or(CRISPRBits::NEITHER, |x| *x), &t));
             });
         });
-        vec![input_cell.clone()]
+        vec![ic]
+    }
+
+    fn to_mix_array(&self, input_cell: &Cell) -> Vec<usize> {
+        let mut ret = Vec::new();
+        for i in 0..self.integration_count {
+            let existing_events = input_cell.events.get(&Genome::CRISPRBits(i));
+            match existing_events {
+                None => {
+                    println!("No CRISPRBits events found for index {:?}", input_cell);
+                    panic!("No CRISPRBits events found for index {}", i);
+                }
+                Some(x) => {
+                    for j in 0..(self.targets_per_integration as u16) {
+                        for k in (0 as u16)..(4 as u16) {
+                            if x.events.get(&j).unwrap() == &k {
+                                ret.push(1 as usize);
+                            } else {
+                                ret.push(0 as usize);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ret
     }
 
 
     fn get_mapping(&self, x: &EventOutcomeIndex) -> String {
         String::new()
     }
+
 }
 
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::fs::File;
+    use crate::lineagemodels::model::SimpleDivision;
     use super::*;
 
     #[test]
     fn crispr_bits_transform_cell() {
-        
         let equal_rates = CRISPRBitRate::new(0.98, 0.0099, 0.0099, 0.0002, 0.01);
 
         let cBits = CRISPRBits::new(&1, &1, vec![equal_rates.clone()]);
 
         let mut counts = HashMap::new();
 
-        for i in 0..100 {
-            let mut cell = Cell::new(&10);
-            for j in 0..100 {
-                let cell = cBits.transform(&mut cell);
+        for _i in 0..100 {
+            let mut cell = Cell::new();
+            for _j in 0..100 {
+                cell = cBits.transform(&mut cell).iter().next().unwrap().increment_id_clone();
             };
             let outcome = cell.events.get(&Genome::CRISPRBits(0)).unwrap().events.get(&0).unwrap().clone();
             *counts.entry(outcome).or_insert(0) += 1;
-
         };
-        println!("{:?}",counts);
+        println!("{:?}", counts);
     }
+
+
+
 }

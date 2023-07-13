@@ -12,3 +12,5 @@ rand = "*"
 array_tool = "*"
 nohash-hasher = "*"
 weighted_rand = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = "0.9"
