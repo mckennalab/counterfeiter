@@ -34,13 +34,16 @@ struct Args {
     reedit: f32,
 
     #[clap(long)]
-    output: String,
+    output_mix: String,
+
+    #[clap(long)]
+    output_tree: String,
 
     #[clap(long)]
     generations: usize,
 
     #[clap(long)]
-    intergrations: usize,
+    integrations: usize,
 }
 
 fn main() {
@@ -55,7 +58,7 @@ fn main() {
     let neither = 1.0 - total;
 
     let rates = CRISPRBitRate::new(neither, parameters.left, parameters.right, parameters.both, parameters.reedit);
-    let cBits = CRISPRBits::new(&parameters.intergrations, &1, vec![rates.clone()]);
+    let cBits = CRISPRBits::new(&parameters.integrations, &1, vec![rates.clone()]);
     let simple_division = SimpleDivision { offspring_count: 2 };
 
     let mut current_cells = vec![Cell::new()].iter().map(|x| cBits.transform(x)).next().unwrap();
@@ -84,6 +87,6 @@ fn main() {
 
     generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
-    CRISPRBits::to_newick_tree(&parent_child_map, &"test_tree.newick".to_string());
-    CRISPRBits::to_mix_input(generations.get(&parameters.generations).unwrap(), &cBits, &"test_mix_input.txt".to_string());
+    CRISPRBits::to_newick_tree(&parent_child_map, &parameters.output_tree.to_string());
+    CRISPRBits::to_mix_input(generations.get(&parameters.generations).unwrap(), &cBits, &parameters.output_mix.to_string());
 }
