@@ -83,7 +83,18 @@ impl Cas12aABE {
 
         counts
     }
-
+    pub fn from_editing_rate(rate: &f64,
+        target_count: &usize,
+                             description: String,
+    ) -> Cas12aABE {
+        Cas12aABE{
+            edit_rate: vec![*rate; *target_count],
+            positions: (0..*target_count).map(|x| x as u32).collect::<Vec<u32>>(),
+            original_size: *target_count,
+            random: StdRng::from_entropy(),
+            description,
+        }
+    }
     pub fn from_mpileup_file(filename: &String,
                              minimum_coverage: &usize,
                              minimum_mutation_rate: &f64,

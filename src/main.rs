@@ -26,8 +26,8 @@ use crate::lineagemodels::model::LineageModel;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(long)]
-    mpileup: String,
+    //#[clap(long)]
+    //mpileup: String,
 
     #[clap(long)]
     output_mix: String,
@@ -49,6 +49,10 @@ struct Args {
 
     #[clap(long)]
     trials: usize,
+
+    #[clap(long)]
+    editrate: f64,
+
 }
 
 fn main() {
@@ -61,23 +65,26 @@ fn main() {
     let mut mp: HashMap<u8, u8> = HashMap::new();
     mp.insert(b'A', b'G');
 
-
     let mut simple_division = SimpleDivision { offspring_count: 2 };
+    /*
 
-    // Open the file in append mode, creating it if it doesn't exist
-    let mut file = File::create("simulation_summary.txt").unwrap();
-    let mut cBits = Cas12aABE::from_mpileup_file(&parameters.mpileup,
-                                                 &20,
-                                                 &0.005,
-                                                 mp,
-                                                 "50mer".to_string(),
-                                                 &parameters.mpileupgenerations,
-                                                 &parameters.integrated_barcodes,
-                                                 &mut file);
+        // Open the file in append mode, creating it if it doesn't exist
+        let mut file = File::create("simulation_summary.txt").unwrap();
 
+        let mut cBits = Cas12aABE::from_mpileup_file(&parameters.mpileup,
+                                                     &20,
+                                                     &0.005,
+                                                     mp,
+                                                     "50mer".to_string(),
+                                                     &parameters.mpileupgenerations,
+                                                     &parameters.integrated_barcodes,
+                                                     &mut file);
 
     file.flush();
-
+    */
+    let mut cBits = Cas12aABE::from_editing_rate(&parameters.editrate,
+                                                 &(parameters.integrations * parameters.integrated_barcodes),
+                                                 "50mer".to_string());
 
     for trial in 0..parameters.trials {
         let mut current_cells = vec![Cell::new()].iter().map(|x| cBits.divide(x)).next().unwrap();
