@@ -219,6 +219,26 @@ impl Cas12aABE {
             write!(out, "{:<10}\t{}\n", format!("n{}", k), kept_columns.iter().map(|x| if v[*x] == 0 { "0".to_string() } else { "1".to_string() }).collect::<Vec<String>>().join("")).unwrap();
         });
     }
+
+
+    pub fn to_newick_tree(parent_child_map: &HashMap<usize, Vec<usize>>, output: &String) {
+        let mut out = File::create(output).unwrap();
+        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(parent_child_map, &0)).expect("Unable to write file");
+    }
+
+    pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
+        match parent_child_map.contains_key(current_index) {
+            true => {
+                let children = parent_child_map.get(current_index).unwrap();
+                //format!("(({})n{})", children.iter().map(|x| recursive_tree_builder(parent_child_map, x)).collect::<Vec<String>>().join(","), current_index)
+                format!("({})", children.iter().map(|x| Cas12aABE::recursive_tree_builder(parent_child_map, x)).collect::<Vec<String>>().join(","))
+            }
+            false => {
+                //println!("Done at {}",current_index);
+                format!("n{}", current_index)
+            }
+        }
+    }
 }
 
 
