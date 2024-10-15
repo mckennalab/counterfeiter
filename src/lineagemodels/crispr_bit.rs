@@ -181,7 +181,7 @@ impl LineageModel for CRISPRBits {
         self.targets_per_integration * self.integration_count
     }
 
-    fn transform(&self, input_cell: &Cell) -> Vec<Cell> {
+    fn divide(&mut self, input_cell: &Cell) -> Vec<Cell> {
         let mut ic = input_cell.pure_clone();
         assert_eq!(self.targets_per_integration, self.rates.len());
         (0..self.integration_count).for_each(|i| {
@@ -250,7 +250,7 @@ mod tests {
         for _i in 0..100 {
             let mut cell = Cell::new();
             for _j in 0..100 {
-                cell = cBits.transform(&mut cell).iter().next().unwrap().increment_id_clone();
+                cell = cBits.divide(&mut cell).iter().next().unwrap().increment_id_clone();
             };
             let outcome = cell.events.get(&Genome::CRISPRBits(0)).unwrap().events.get(&0).unwrap().clone();
             *counts.entry(outcome).or_insert(0) += 1;

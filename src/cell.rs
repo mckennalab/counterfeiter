@@ -18,36 +18,21 @@ pub struct Cell {
 
 impl Cell {
     pub fn new() -> Cell {
-        //let events: HashMap::<Genome, GenomeEventLookup, BuildHasherDefault<NoHashHasher<Genome>>> =
-        //    HashMap::with_capacity_and_hasher(*guessed_genome_count, BuildNoHashHasher::default());
         let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        //println!("new cell with id {}", id);
         Cell{id, events: HashMap::new() }
     }
 
     /// we want to be able to fully clone a cell when we need to but have the canonical clone
     /// protect the ID by making it unique.
     pub fn pure_clone(&self) -> Cell {
-        //println!("new cell with NONCLONED id {}", self.id);
         Cell{id: self.id.clone(), events: self.events.clone()}
     }
 
     pub fn increment_id_clone(&self) -> Self {
         let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        //println!("new cell with CLONED id {} from cell {}", id, self.id);
         Cell{id, events: self.events.clone()}
     }
 }
-/*
-/// Cloning a cell does not preserve the ID, but does preserve the events.
-impl Clone for Cell {
-    fn clone(&self) -> Self {
-        let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        println!("new cell with CLONED id {} from cell {}", id, self.id);
-        Cell{id, events: self.events.clone()}
-    }
-}
-*/
 
 #[cfg(test)]
 mod tests {

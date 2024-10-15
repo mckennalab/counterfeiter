@@ -4,7 +4,8 @@ use crate::lineagemodels::model::{EventOutcomeIndex, EventPosition};
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[repr(u8)]
 pub enum Genome {
-    CRISPRBits(usize),
+    CRISPRBits(String), // each type has a description
+    ABECas12a(String), // each type has a description
 }
 
 #[derive(Clone, Debug)]

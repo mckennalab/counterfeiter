@@ -14,3 +14,4 @@ nohash-hasher = "*"
 weighted_rand = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "0.9"
+rand_chacha = "0.3.1"
