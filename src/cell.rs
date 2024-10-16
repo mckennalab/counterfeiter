@@ -9,11 +9,11 @@ static OBJECT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// A cell is a collection of events at target sites. This struct is kept as minimal
 /// as possible to reduce memory usage, and events and sites are referred to by index.
-/// The cells are passed the relevent look-up object when they 'split' to create new cells.
+/// The cells are passed the relevant look-up object when they 'split' to create new cells.
 #[derive(Debug)]
 pub struct Cell {
     pub id: usize,
-    pub events: HashMap<Genome,GenomeEventLookup>,//, BuildHasherDefault<NoHashHasher<Genome>>>,
+    pub events: HashMap<Genome,GenomeEventLookup>,
 }
 
 impl Cell {

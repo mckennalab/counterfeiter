@@ -21,7 +21,7 @@ use crate::cell::Cell;
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
 //use crate::lineagemodels::crispr_bit::{CRISPRBitRate, CRISPRBits};
 use crate::lineagemodels::model::SimpleDivision;
-use crate::lineagemodels::model::LineageModel;
+use crate::lineagemodels::model::CellFactory;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -39,13 +39,16 @@ struct Args {
     generations: usize,
 
     #[clap(long)]
-    integrations: usize,
+    sites_per_barcode: usize,
 
     #[clap(long)]
     mpileupgenerations: usize,
 
     #[clap(long)]
     integrated_barcodes: usize,
+
+    #[clap(long)]
+    barcode_drop_rate: f64,
 
     #[clap(long)]
     trials: usize,
@@ -83,7 +86,8 @@ fn main() {
     file.flush();
     */
     let mut cBits = Cas12aABE::from_editing_rate(&parameters.editrate,
-                                                 &(parameters.integrations * parameters.integrated_barcodes),
+                                                 &parameters.sites_per_barcode,
+                                                 &parameters.integrated_barcodes,
                                                  "50mer".to_string());
 
     for trial in 0..parameters.trials {
@@ -113,7 +117,7 @@ fn main() {
         }
 
         generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
-        cBits.to_mix_input(&current_cells, &parameters.output_mix);
+        cBits.to_mix_input(&current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
         Cas12aABE::to_newick_tree(&parent_child_map, &parameters.output_tree.to_string());
 
 
@@ -199,7 +203,7 @@ fn calculate_column_proportions(filename: &String) -> Result<Vec<f64>, Box<dyn E
             match *val_str {
                 b'1' => counts[i] += 1,
                 b'0' => {}
-                _ => return Err(From::from(format!("Invalid data value '{}'", val_str))),
+                _ => {} //return Err(From::from(format!("Invalid data value '{}'", val_str))),
             }
         }
 
