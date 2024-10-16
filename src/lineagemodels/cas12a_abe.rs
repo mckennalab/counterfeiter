@@ -64,11 +64,18 @@ impl Cas12aABE {
         let mut cell_to_output = HashMap::new();
         let mut event_len: Option<usize> = None;
         for cell in cells {
-            cell_to_output.insert(cell.id, self.to_mix_array(drop_rate, &cell));
-            if event_len.is_none() {
-                event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
-            } else {
-                assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+            match self.to_mix_array(drop_rate, &cell) {
+                Some(x) => {
+                    cell_to_output.insert(cell.id, x);
+                    if event_len.is_none() {
+                        event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
+                    } else {
+                        assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+                    }
+                },
+                None => {
+                    
+                }
             }
         }
 
@@ -123,17 +130,17 @@ impl CellFactory for Cas12aABE {
         vec![ic]
     }
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &Cell) -> Vec<u8> {
+    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &Cell) -> Option<Vec<u8>> {
         let mut ret = Vec::new();
         let existing_events = input_cell.events.get(&Genome::ABECas12a(self.description.clone())).unwrap();
-        //println!("Event size space {}", existing_events.events.len());
+        let mut all_empty = true;
         for integration in 0..self.edit_rate.len() {
             let draw = self.random.gen::<f64>();
             //println!("draw {} < {} threshold ",draw,drop_rate);
             if draw > *drop_rate {
                 for i in 0..self.edit_rate.get(integration).unwrap().len() {
                     //println!("size {}",existing_events.events.len());
-
+                    all_empty = false;
                     let position_outcome = existing_events.events.get(&((i + (integration * self.targets_per_barcode)) as EventPosition));
                     match position_outcome {
                         None => {
@@ -156,7 +163,11 @@ impl CellFactory for Cas12aABE {
             }
         }
         //println!("Ret {:?}",ret);
-        ret
+        if all_empty {
+            None
+        } else {
+            Some(ret)
+        }
     }
 
     fn get_mapping(&self, index: &EventOutcomeIndex) -> String {
