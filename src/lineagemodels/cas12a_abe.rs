@@ -95,7 +95,9 @@ impl Cas12aABE {
         match parent_child_map.contains_key(current_index) {
             true => {
                 let children = parent_child_map.get(current_index).unwrap();
-                let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(cells, parent_child_map, x)).collect::<Vec<String>>().join(",");
+                let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(cells, parent_child_map, x))
+                    .filter(|x| x != &"".to_string())
+                    .collect::<Vec<String>>().join(",");
                 if child_map.len() > 0 {format!("({})", child_map)} else {format!("")}
 
             }
