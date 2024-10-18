@@ -117,8 +117,8 @@ fn main() {
         }
 
         generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
-        cBits.to_mix_input(&current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
-        Cas12aABE::to_newick_tree(&parent_child_map, &parameters.output_tree.to_string());
+        cBits.to_mix_input(&mut current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
+        Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &parameters.output_tree.to_string());
 
 
         let proportions = calculate_column_proportions(&parameters.output_mix).unwrap();

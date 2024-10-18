@@ -60,11 +60,11 @@ impl Cas12aABE {
         }
     }
 
-    pub fn to_mix_input(&mut self, cells: &Vec<Cell>, drop_rate: &f64, output: &String) {
+    pub fn to_mix_input(&mut self, cells: &mut Vec<Cell>, drop_rate: &f64, output: &String) {
         let mut cell_to_output = HashMap::new();
         let mut event_len: Option<usize> = None;
-        for cell in cells {
-            match self.to_mix_array(drop_rate, &cell) {
+        cells.iter_mut().for_each(|cell| {
+            match self.to_mix_array(drop_rate, cell) {
                 Some(x) => {
                     cell_to_output.insert(cell.id, x);
                     if event_len.is_none() {
@@ -73,11 +73,10 @@ impl Cas12aABE {
                         assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
                     }
                 },
-                None => {
-                    
-                }
+                None => {}
             }
-        }
+        });
+
 
         let mut out = File::create(output).unwrap();
         write!(out, "\t{}\t{}\n", cell_to_output.len(), self.targets_per_barcode * self.edit_rate.len()).unwrap();
@@ -87,19 +86,31 @@ impl Cas12aABE {
     }
 
 
-    pub fn to_newick_tree(parent_child_map: &HashMap<usize, Vec<usize>>, output: &String) {
+    pub fn to_newick_tree(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, output: &String) {
         let mut out = File::create(output).unwrap();
-        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(parent_child_map, &0)).expect("Unable to write file");
+        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(cells, parent_child_map, &0)).expect("Unable to write file");
     }
 
-    pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
+    pub fn recursive_tree_builder(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
         match parent_child_map.contains_key(current_index) {
             true => {
                 let children = parent_child_map.get(current_index).unwrap();
-                format!("({})", children.iter().map(|x| Cas12aABE::recursive_tree_builder(parent_child_map, x)).collect::<Vec<String>>().join(","))
+                let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(cells, parent_child_map, x)).collect::<Vec<String>>().join(",");
+                if child_map.len() > 0 {format!("({})", child_map)} else {format!("")}
+
             }
             false => {
-                format!("n{}", current_index)
+                let mut is_silent = true;
+                for cell in cells {
+                    if cell.id == *current_index && cell.visible_in_output {
+                        is_silent = false;
+                    }
+                }
+                if is_silent {
+                    format!("")
+                } else {
+                    format!("n{}", current_index)
+                }
             }
         }
     }
@@ -130,7 +141,7 @@ impl CellFactory for Cas12aABE {
         vec![ic]
     }
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
         let mut ret = Vec::new();
         let existing_events = input_cell.events.get(&Genome::ABECas12a(self.description.clone())).unwrap();
         let mut all_empty = true;
@@ -164,6 +175,7 @@ impl CellFactory for Cas12aABE {
         }
         //println!("Ret {:?}",ret);
         if all_empty {
+            input_cell.visible_in_output = false;
             None
         } else {
             Some(ret)

@@ -12,7 +12,7 @@ pub trait CellFactory {
 
     fn divide(&mut self, input_cell: &Cell) -> Vec<Cell>;
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &Cell) -> Option<Vec<u8>>;
+    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>>;
 
     fn get_mapping(&self, index: &EventOutcomeIndex) -> String;
 }
@@ -59,7 +59,7 @@ impl CellFactory for SimpleDivision {
         new_cells
     }
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
         None
     }
 
