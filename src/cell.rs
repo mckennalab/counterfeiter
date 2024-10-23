@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::genome::{Genome, GenomeEventLookup};
+use crate::genome::{Genome, GenomeEventKey};
 
 // from https://stackoverflow.com/questions/32935808/generate-sequential-ids-for-each-instance-of-a-struct
 // and https://doc.rust-lang.org/std/sync/atomic/
@@ -13,14 +13,14 @@ static OBJECT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct Cell {
     pub id: usize,
-    pub events: HashMap<Genome,GenomeEventLookup>,
+    pub events: HashSet<GenomeEventKey>,
     pub visible_in_output: bool,
 }
 
 impl Cell {
     pub fn new() -> Cell {
         let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Cell{id, events: HashMap::new(), visible_in_output: true }
+        Cell{id, events: HashSet::new(), visible_in_output: true }
     }
 
     /// we want to be able to fully clone a cell when we need to but have the canonical clone

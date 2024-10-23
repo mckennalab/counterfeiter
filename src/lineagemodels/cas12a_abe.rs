@@ -4,27 +4,24 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::str::FromStr;
-use rand::prelude::StdRng;
-use rand::prelude::*;
-use crate::genome::{Genome, GenomeEventLookup};
+use crate::genome::{EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification};
 use std::io::Write;
+use rand::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct Cas12aABE {
     edit_rate: Vec<Vec<f64>>,
     positions: Vec<u32>,
-    pub targets_per_barcode: usize,
-    random: StdRng,
+    pub targets_per_barcode: u32,
     description: String,
+    genome: GenomeDescription,
 }
 
 
 impl Cas12aABE {
-
-
     pub fn from_editing_rate(rate: &f64,
-                             target_count: &usize,
-                             integration_count: &usize,
+                             target_count: &u32,
+                             integration_count: &u32,
                              description: String,
     ) -> Cas12aABE {
         let edit_rates = (0..(*integration_count)).map(|e|
@@ -34,37 +31,44 @@ impl Cas12aABE {
             edit_rate: edit_rates,
             positions: (0..(integration_count * target_count)).map(|x| x as u32).collect::<Vec<u32>>(),
             targets_per_barcode: *target_count,
-            random: StdRng::from_entropy(),
-            description,
+            description: description.clone(),
+            genome: GenomeDescription {
+                genome: Genome::ABECas12a,
+                name: description,
+                allows_overlap: false,
+            },
         }
     }
-    fn draw_new_event(&mut self, current_state: EventOutcomeIndex, position: &usize) -> EventOutcomeIndex {
+    fn draw_new_event(&self, position: &u32, genome: &mut GenomeEventCollection) -> Option<GenomeEventKey> {
         let target = position % self.targets_per_barcode;
         let barcode = position / self.targets_per_barcode;
-        match current_state {
-            0 => {
-                let proportion = self.edit_rate.get(barcode).unwrap();
-                let proportion = proportion.get(target).unwrap();
+        let proportion = self.edit_rate.get(barcode as usize).unwrap();
+        let proportion = proportion.get(target as usize).unwrap();
 
-                let rando = self.random.gen::<f64>();
-                if rando <= *proportion {
-                    1 as EventOutcomeIndex
-                } else {
-                    0 as EventOutcomeIndex
-                }
-            }
-            _ => {
-                //println!("current state {} ",current_state);
-                current_state
-            }
+        //let mut rng = rand::rng();
+        let mut rng: rand::rngs::ThreadRng = rand::thread_rng();
+
+        let rando = rng.gen::<f64>();
+        if rando <= *proportion {
+            let outcome = EditingOutcome {
+                start: *position,
+                stop: *position + 1, // [x,y) intervals
+                change: Modification::Substitution,
+                nucleotides: vec![b'A'],
+                internal_outcome_id: 1,
+            };
+            genome.add_event(&self.genome, outcome)
+
+        } else {
+            None
         }
     }
 
-    pub fn to_mix_input(&mut self, cells: &mut Vec<Cell>, drop_rate: &f64, output: &String) {
+    pub fn to_mix_input(&mut self, genome: &GenomeEventCollection, cells: &mut Vec<Cell>, drop_rate: &f64, output: &String) {
         let mut cell_to_output = HashMap::new();
         let mut event_len: Option<usize> = None;
         cells.iter_mut().for_each(|cell| {
-            match self.to_mix_array(drop_rate, cell) {
+            match self.to_mix_array(genome, drop_rate, cell) {
                 Some(x) => {
                     cell_to_output.insert(cell.id, x);
                     if event_len.is_none() {
@@ -72,14 +76,14 @@ impl Cas12aABE {
                     } else {
                         assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
                     }
-                },
+                }
                 None => {}
             }
         });
 
 
         let mut out = File::create(output).unwrap();
-        write!(out, "\t{}\t{}\n", cell_to_output.len(), self.targets_per_barcode * self.edit_rate.len()).unwrap();
+        write!(out, "\t{}\t{}\n", cell_to_output.len(), self.targets_per_barcode as usize * self.edit_rate.len()).unwrap();
         cell_to_output.iter().for_each(|(k, v)| {
             write!(out, "{:<10}\t{}\n", format!("n{}", k), String::from_utf8(v.clone()).unwrap());
         });
@@ -98,8 +102,7 @@ impl Cas12aABE {
                 let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(cells, parent_child_map, x))
                     .filter(|x| x != &"".to_string())
                     .collect::<Vec<String>>().join(",");
-                if child_map.len() > 0 {format!("({})", child_map)} else {format!("")}
-
+                if child_map.len() > 0 { format!("({})", child_map) } else { format!("") }
             }
             false => {
                 let mut is_silent = true;
@@ -124,45 +127,48 @@ impl CellFactory for Cas12aABE {
         self.positions.len()
     }
 
-    fn divide(&mut self, input_cell: &Cell) -> Vec<Cell> {
-        let mut ic = input_cell.pure_clone();
-
-        let existing_events = ic.events.entry(
-            Genome::ABECas12a(self.description.clone())).or_insert(GenomeEventLookup::new());
-
-        let edit_rates = self.edit_rate.clone();
-        edit_rates.iter().enumerate().for_each(|(barcode_index,barcode)| {
-            barcode.iter().enumerate().for_each(| (position, edit_rate)| {
-                let pos = (position + (barcode_index * self.targets_per_barcode)) as EventPosition;
-                let new_event = self.draw_new_event(existing_events.events.get(&pos).map_or(0 as EventOutcomeIndex, |x| *x), &(pos as usize));
-                //println!("pos {} new event {}",pos,new_event);
-                existing_events.events.
-                    insert(pos, new_event);
+    fn divide(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
+        &self.edit_rate.iter().enumerate().for_each(|(barcode_index, barcode)| {
+            barcode.iter().enumerate().for_each(|(position, edit_rate)| {
+                let pos = (position + (barcode_index * self.targets_per_barcode as usize)) as EventPosition;
+                match self.draw_new_event(&(pos as u32), genome) {
+                    None => {}
+                    Some(x) => {
+                        input_cell.events.insert(x);
+                    }
+                }
             });
         });
-        vec![ic]
+        vec![input_cell.pure_clone()]
     }
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&mut self, genome: &GenomeEventCollection, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
         let mut ret = Vec::new();
-        let existing_events = input_cell.events.get(&Genome::ABECas12a(self.description.clone())).unwrap();
+
+        let existing_events = genome.filter_events_and_get_Outcomes(&self.genome, &input_cell.events).iter().map(|x| {
+            (x.start,x.clone())
+        }).collect::<HashMap<u32, EditingOutcome>>();
+
+
         let mut all_empty = true;
         for integration in 0..self.edit_rate.len() {
-            let draw = self.random.gen::<f64>();
+            let mut rng: rand::rngs::ThreadRng = rand::thread_rng();
+
+            let draw = rng.gen::<f64>();
             //println!("draw {} < {} threshold ",draw,drop_rate);
             if draw > *drop_rate {
                 for i in 0..self.edit_rate.get(integration).unwrap().len() {
+                    let i = i as u32;
                     //println!("size {}",existing_events.events.len());
                     all_empty = false;
-                    let position_outcome = existing_events.events.get(&((i + (integration * self.targets_per_barcode)) as EventPosition));
+                    let position_outcome = existing_events.get(&(i + (integration as u32 * self.targets_per_barcode)));
                     match position_outcome {
                         None => {
-                            println!("No Cas12aABE events found for index {:?}", input_cell);
-                            panic!("No Cas12aABE events found for index {}", i);
+                            ret.push(b'0');
                         }
                         Some(x) => {
-                            match x {
-                                0 => ret.push(b'0'),
+                            match x.internal_outcome_id {
+                                0 => {panic!("We shouldn't store 0 outcomes")}
                                 1 => ret.push(b'1'),
                                 _ => panic!("unknown symbol")
                             }

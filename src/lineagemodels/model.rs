@@ -1,4 +1,5 @@
 use crate::cell::Cell;
+use crate::genome::GenomeEventCollection;
 
 // the current simulation caps this at 65K unique events -- we can raise this in the future
 pub type EventPosition = u16;
@@ -10,9 +11,9 @@ pub trait CellFactory {
 
     fn estimated_event_space(&self) -> usize;
 
-    fn divide(&mut self, input_cell: &Cell) -> Vec<Cell>;
+    fn divide(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell>;
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>>;
+    fn to_mix_array(&mut self, genome: &GenomeEventCollection, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>>;
 
     fn get_mapping(&self, index: &EventOutcomeIndex) -> String;
 }
@@ -51,7 +52,7 @@ impl CellFactory for SimpleDivision {
     /// # Returns
     ///
     /// * `Vec<Cell>` - A vector containing the newly created offspring cells.
-    fn divide(&mut self, input_cell: &Cell) -> Vec<Cell> {
+    fn divide(&self, input_cell: &mut Cell, _genome: &mut GenomeEventCollection) -> Vec<Cell> {
         let mut new_cells: Vec<Cell> = Vec::new();
         for _i in 0..self.offspring_count {
             new_cells.push(input_cell.increment_id_clone());
@@ -59,7 +60,7 @@ impl CellFactory for SimpleDivision {
         new_cells
     }
 
-    fn to_mix_array(&mut self, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&mut self, _genome: &GenomeEventCollection, _drop_rate: &f64, _input_cell: &mut Cell) -> Option<Vec<u8>> {
         None
     }
 

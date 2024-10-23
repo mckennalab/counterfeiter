@@ -7,9 +7,9 @@ mod lineagemodels {
     pub mod cas12a_abe;
 }
 
-extern crate lazy_static;
 extern crate rand;
 extern crate array_tool;
+extern crate bio;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufRead, Write};
@@ -18,6 +18,7 @@ use std::error::Error;
 use std::collections::HashMap;
 use clap::Parser;
 use crate::cell::Cell;
+use crate::genome::GenomeEventCollection;
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
 //use crate::lineagemodels::crispr_bit::{CRISPRBitRate, CRISPRBits};
 use crate::lineagemodels::model::SimpleDivision;
@@ -39,13 +40,13 @@ struct Args {
     generations: usize,
 
     #[clap(long)]
-    sites_per_barcode: usize,
+    sites_per_barcode: u32,
 
     #[clap(long)]
     mpileupgenerations: usize,
 
     #[clap(long)]
-    integrated_barcodes: usize,
+    integrated_barcodes: u32,
 
     #[clap(long)]
     barcode_drop_rate: f64,
@@ -85,13 +86,15 @@ fn main() {
 
     file.flush();
     */
-    let mut cBits = Cas12aABE::from_editing_rate(&parameters.editrate,
+    let mut cas12a = Cas12aABE::from_editing_rate(&parameters.editrate,
                                                  &parameters.sites_per_barcode,
                                                  &parameters.integrated_barcodes,
                                                  "50mer".to_string());
 
+    let mut genome = GenomeEventCollection::new();
+
     for trial in 0..parameters.trials {
-        let mut current_cells = vec![Cell::new()].iter().map(|x| cBits.divide(x)).next().unwrap();
+        let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.divide(&mut x, &mut genome)).next().unwrap();
         let mut generations: std::collections::HashMap<usize, Vec<Cell>> = HashMap::new();
 
         for i in 0..parameters.generations {
@@ -99,26 +102,26 @@ fn main() {
 
             generations.insert(i, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
-            for mut cell in current_cells {
+            current_cells.into_iter().for_each(|mut cell| {
                 let parent_id = cell.id;
 
-                let generated_children = cBits.divide(&mut cell).iter().
-                    flat_map(|x| simple_division.divide(x)).collect::<Vec<Cell>>();
+                let generated_children = cas12a.divide(&mut cell, &mut genome).into_iter().
+                    flat_map(|mut x| simple_division.divide(&mut x, &mut genome)).collect::<Vec<Cell>>();
 
                 for child in generated_children {
                     let child_id = child.id;
                     parent_child_map.entry(parent_id).or_insert(Vec::new()).push(child_id);
                     next_cells.push(child);
                 }
-            }
+            });
 
             println!("{}: {}, {}", i, next_cells.len(), next_cells.iter().next().unwrap().id);
             current_cells = next_cells;
         }
 
         generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
-        cBits.to_mix_input(&mut current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
-        Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &parameters.output_tree.to_string());
+        cas12a.to_mix_input(&genome, &mut current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
+        /*Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &parameters.output_tree.to_string());
 
 
         let proportions = calculate_column_proportions(&parameters.output_mix).unwrap();
@@ -141,7 +144,7 @@ fn main() {
 
         // Optionally, flush to ensure all data is written
         file.flush().unwrap();
-
+*/
 
     }
 }
