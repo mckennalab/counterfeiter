@@ -10,10 +10,14 @@ mod lineagemodels {
 extern crate rand;
 extern crate array_tool;
 extern crate bio;
+extern crate rustc_hash;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufRead, Write};
 use std::error::Error;
+use rustc_hash::FxHashMap;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 use std::collections::HashMap;
 use clap::Parser;
@@ -57,6 +61,10 @@ struct Args {
     #[clap(long)]
     editrate: f64,
 
+    #[clap(long)]
+    subsampling_number: usize,
+
+
 }
 
 fn main() {
@@ -93,9 +101,11 @@ fn main() {
 
     let mut genome = GenomeEventCollection::new();
 
+
+
     for trial in 0..parameters.trials {
         let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.divide(&mut x, &mut genome)).next().unwrap();
-        let mut generations: std::collections::HashMap<usize, Vec<Cell>> = HashMap::new();
+        let mut generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
 
         for i in 0..parameters.generations {
             let mut next_cells = Vec::new();
@@ -119,34 +129,32 @@ fn main() {
             current_cells = next_cells;
         }
 
+        // subsample cells that we're interested in the final generation
+        let cell_ids: Vec<usize> = current_cells.iter().map(|c| c.id.clone()).collect();
+        let mut cell_ids_to_keep : HashMap<usize,bool> = subsample(&cell_ids, parameters.subsampling_number).iter().map(|x| (*x,true)).collect();
+
         generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
-        cas12a.to_mix_input(&genome, &mut current_cells, &parameters.barcode_drop_rate, &parameters.output_mix);
-        /*Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &parameters.output_tree.to_string());
+
+        println!("generating mix input file");
+        cas12a.to_mix_input(&genome, &mut current_cells, &parameters.barcode_drop_rate, &mut cell_ids_to_keep, &parameters.output_mix);
+
+        println!("generating tree file");
+        Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &cell_ids_to_keep, &parameters.output_tree.to_string());
+        println!("generating summary");
 
 
-        let proportions = calculate_column_proportions(&parameters.output_mix).unwrap();
-
-        // Open the file in append mode, creating it if it doesn't exist
-        let mut file = OpenOptions::new()
-            .append(true) // Open in append mode
-            .create(true) // Create the file if it doesn't exist
-            .open("simulation_summary.txt").unwrap();
-
-        // Write the line to the file
-        let output_str = proportions.iter().map(|x| {
-            format!("{:.3}", *x)
-        }).collect::<Vec<String>>().join("\t");
-        //println!("output string {}",output_str);
-        file.write_all(format!("{}\t", trial+1).as_bytes()).unwrap();
-
-        file.write_all(output_str.as_bytes()).unwrap();
-        file.write_all("\n".as_bytes()).unwrap();
-
-        // Optionally, flush to ensure all data is written
-        file.flush().unwrap();
-*/
 
     }
+}
+
+fn subsample<T: Clone>(vec: &Vec<T>, sample_size: usize) -> Vec<T> {
+    let mut rng = thread_rng();
+
+    // Shuffle the original vector and take the first `sample_size` elements
+    let mut vec_clone = vec.clone();
+    vec_clone.shuffle(&mut rng);
+
+    vec_clone.into_iter().take(sample_size).collect()
 }
 
 /// Reads a MIX format file and calculates the proportions of 1s in each column.

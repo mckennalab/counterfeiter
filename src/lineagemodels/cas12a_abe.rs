@@ -1,12 +1,15 @@
 use crate::cell::Cell;
 use crate::lineagemodels::model::{EventOutcomeIndex, EventPosition, CellFactory};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::str::FromStr;
 use crate::genome::{EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification};
 use std::io::Write;
+use rustc_hash::FxHashMap;
 use rand::prelude::*;
+use regex::Regex;
+
 
 #[derive(Clone, Debug)]
 pub struct Cas12aABE {
@@ -58,26 +61,29 @@ impl Cas12aABE {
                 internal_outcome_id: 1,
             };
             genome.add_event(&self.genome, outcome)
-
         } else {
             None
         }
     }
 
-    pub fn to_mix_input(&mut self, genome: &GenomeEventCollection, cells: &mut Vec<Cell>, drop_rate: &f64, output: &String) {
+    pub fn to_mix_input(&mut self, genome: &GenomeEventCollection, cells: &mut Vec<Cell>, drop_rate: &f64, cell_ids_to_keep: &mut HashMap<usize, bool>, output: &String) {
         let mut cell_to_output = HashMap::new();
         let mut event_len: Option<usize> = None;
         cells.iter_mut().for_each(|cell| {
-            match self.to_mix_array(genome, drop_rate, cell) {
-                Some(x) => {
-                    cell_to_output.insert(cell.id, x);
-                    if event_len.is_none() {
-                        event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
-                    } else {
-                        assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+            if cell_ids_to_keep.contains_key(&cell.id) {
+                match self.to_mix_array(genome, drop_rate, cell) {
+                    Some(x) => {
+                        cell_to_output.insert(cell.id, x);
+                        if event_len.is_none() {
+                            event_len = Some(cell_to_output.get(&cell.id).unwrap().len());
+                        } else {
+                            assert_eq!(cell_to_output.get(&cell.id).unwrap().len(), event_len.unwrap());
+                        }
+                    }
+                    None => {
+                        cell_ids_to_keep.remove(&cell.id);
                     }
                 }
-                None => {}
             }
         });
 
@@ -90,43 +96,123 @@ impl Cas12aABE {
     }
 
 
-    pub fn to_newick_tree(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, output: &String) {
+    pub fn to_newick_tree(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, cell_ids_to_keep: &HashMap<usize, bool>, output: &String) {
         let mut out = File::create(output).unwrap();
-        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(cells, parent_child_map, &0)).expect("Unable to write file");
+        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(parent_child_map, cell_ids_to_keep, &0, )).expect("Unable to write file");
     }
 
-    pub fn recursive_tree_builder(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
+    pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>,
+                                  cell_ids_to_keep: &HashMap<usize, bool>,
+                                  current_index: &usize) -> String {
         match parent_child_map.contains_key(current_index) {
             true => {
                 let children = parent_child_map.get(current_index).unwrap();
-                let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(cells, parent_child_map, x))
+                let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(parent_child_map, cell_ids_to_keep, x))
                     .filter(|x| x != &"".to_string())
                     .collect::<Vec<String>>().join(",");
                 if child_map.len() > 0 { format!("({})", child_map) } else { format!("") }
             }
             false => {
-                let mut is_silent = true;
-                for cell in cells {
-                    if cell.id == *current_index && cell.visible_in_output {
-                        is_silent = false;
-                    }
-                }
-                if is_silent {
-                    format!("")
-                } else {
+                if cell_ids_to_keep.contains_key(current_index) {
                     format!("n{}", current_index)
+                } else {
+                    "".to_string()
                 }
             }
         }
     }
+    pub fn iterative_tree_builder(
+        parent_child_map: &HashMap<usize, Vec<usize>>,
+        cell_ids_to_keep: &HashMap<usize, bool>,
+        root_index: &usize
+    ) -> String {
+        let mut stack = VecDeque::new();
+
+        // Start by pushing the root node onto the stack
+        stack.push_back((*root_index,0));
+        let mut full_reverse_string: Vec<Vec<u8>> = Vec::new();
+        let mut last_node : Option<(usize,usize)> = None;
+
+        while let Some(current_index) = stack.pop_front() {
+            match last_node {
+                None => {
+                    full_reverse_string.push(vec![b')']);
+                }
+                Some(x) => {
+                    // we're coming back up the tree towards the root
+                    if current_index.1 < x.1 {
+                        for i in current_index.1..x.1 {
+                            full_reverse_string.push(vec![b'(']);
+                        }
+
+                    } else if current_index.1 > x.1 {
+                        // we're going down a level(s) towards the leaves
+                        for i in x.1..current_index.1 {
+                            full_reverse_string.push(vec![b')']);
+                        }
+                    } else {
+                        if parent_child_map.contains_key(&current_index.0) || cell_ids_to_keep.contains_key(&current_index.0) {
+                            if cell_ids_to_keep.contains_key(&x.0) {
+                                full_reverse_string.push(vec![b',']);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if parent_child_map.contains_key(&current_index.0) {
+                let children = parent_child_map.get(&current_index.0).unwrap();
+
+                for child in children {
+                    stack.push_front((*child,current_index.1 +2));
+                }
+                full_reverse_string.push(format!("n{}", current_index.0).as_bytes().to_vec());
+                last_node = Some(current_index.clone());
+            } else {
+                if cell_ids_to_keep.contains_key(&current_index.0) {
+                    full_reverse_string.push(format!("n{}", current_index.0).as_bytes().to_vec());
+                } else {
+                    //println!("dropping node {}",current_index.0);
+                }
+                last_node = Some(current_index.clone());
+
+            }
+        }
+        match last_node {
+            None => {}
+            Some(x) => {
+                for i in 0..x.1 - 1 {
+                    full_reverse_string.push(vec![b'(']);
+                }
+            }
+        }
+
+        full_reverse_string.reverse();
+        // Return the final result for the root node
+
+        let mut res = String::from_utf8(full_reverse_string.into_iter().flatten().collect()).unwrap();
+        let re = Regex::new("\\(\\)").unwrap();
+        let mut re_count = re.find(&res).iter().count();
+        // we have to remove ((())) in three loops, etc
+        while re_count > 0 {
+            res = re.replace_all(res.as_str(), "").to_string();
+            re_count = re.find(&res).iter().count();
+        }
+
+        //println!("res {}",res);
+        let re = Regex::new(r"(n\d+)(n\d+)").unwrap();
+        let res = re.replace_all(res.as_str(), "$1,$2").to_string();
+        //println!("res {}",res);
+        let re = Regex::new(r"(n\d+)(\()").unwrap();
+        let res = re.replace_all(res.as_str(), "$1,$2").to_string();
+        //println!("res {}",res);
+        // Use the `replace_all` function to remove all matches of the pattern
+        re.replace_all(res.as_str(), "").to_string()
+
+    }
 }
 
-
 impl CellFactory for Cas12aABE {
-    fn estimated_event_space(&self) -> usize {
-        self.positions.len()
-    }
-
     fn divide(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
         &self.edit_rate.iter().enumerate().for_each(|(barcode_index, barcode)| {
             barcode.iter().enumerate().for_each(|(position, edit_rate)| {
@@ -195,5 +281,36 @@ impl CellFactory for Cas12aABE {
             0 => "0".to_string(),
             _ => "1".to_string()
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::lineagemodels::model::SimpleDivision;
+    use super::*;
+
+    #[test]
+    fn test_iterative_example() {
+        /*
+
+    pub fn iterative_tree_builder(
+        cells: &Vec<Cell>,
+        parent_child_map: &HashMap<usize, Vec<usize>>,
+        cell_ids_to_keep: &HashMap<usize,bool>,
+        root_index: &usize
+         */
+        let mut parent_child_map: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut cell_ids_to_keep: HashMap<usize,bool> = HashMap::new();
+        let root_index: usize = 0;
+
+        parent_child_map.insert(0,vec!(1,2));
+        parent_child_map.insert(1,vec!(3,4));
+        parent_child_map.insert(2,vec!(5,6));
+        cell_ids_to_keep.insert(3,true);
+        cell_ids_to_keep.insert(5,true);
+        cell_ids_to_keep.insert(4,true);
+        cell_ids_to_keep.insert(6,true);
+        println!("tree {} ",Cas12aABE::iterative_tree_builder(&parent_child_map,&cell_ids_to_keep,&root_index));
     }
 }

@@ -13,6 +13,7 @@ static OBJECT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct Cell {
     pub id: usize,
+    pub parent_id: usize,
     pub events: HashSet<GenomeEventKey>,
     pub visible_in_output: bool,
 }
@@ -20,18 +21,18 @@ pub struct Cell {
 impl Cell {
     pub fn new() -> Cell {
         let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Cell{id, events: HashSet::new(), visible_in_output: true }
+        Cell{id, parent_id: usize::MAX, events: HashSet::new(), visible_in_output: true }
     }
 
     /// we want to be able to fully clone a cell when we need to but have the canonical clone
     /// protect the ID by making it unique.
     pub fn pure_clone(&self) -> Cell {
-        Cell{id: self.id.clone(), events: self.events.clone(), visible_in_output: true}
+        Cell{id: self.id.clone(), parent_id: self.parent_id, events: self.events.clone(), visible_in_output: true}
     }
 
-    pub fn increment_id_clone(&self) -> Self {
+    pub fn increment_id_clone(&self, parent_id: usize) -> Self {
         let id = OBJECT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Cell{id, events: self.events.clone(), visible_in_output: true}
+        Cell{id, parent_id, events: self.events.clone(), visible_in_output: true}
     }
 }
 

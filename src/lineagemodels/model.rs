@@ -9,7 +9,6 @@ pub type EventOutcomeIndex = u16;
 
 pub trait CellFactory {
 
-    fn estimated_event_space(&self) -> usize;
 
     fn divide(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell>;
 
@@ -27,17 +26,6 @@ pub struct SimpleDivision {
 /// into a specified number of offspring cells. This model is deterministic and does not consider
 /// stochastic events or additional cell states.
 impl CellFactory for SimpleDivision {
-    /// Estimates the event space for the lineage model.
-    ///
-    /// Returns `0` because the `SimpleDivision` model does not involve any stochastic events
-    /// or varying outcomes; each cell division is deterministic with a fixed number of offspring.
-    ///
-    /// # Returns
-    ///
-    /// * `usize` - The estimated size of the event space (always `0` for this model).
-    fn estimated_event_space(&self) -> usize {
-        0
-    }
 
     /// Divides an input cell into multiple offspring cells.
     ///
@@ -55,7 +43,7 @@ impl CellFactory for SimpleDivision {
     fn divide(&self, input_cell: &mut Cell, _genome: &mut GenomeEventCollection) -> Vec<Cell> {
         let mut new_cells: Vec<Cell> = Vec::new();
         for _i in 0..self.offspring_count {
-            new_cells.push(input_cell.increment_id_clone());
+            new_cells.push(input_cell.increment_id_clone(input_cell.parent_id));
         }
         new_cells
     }
