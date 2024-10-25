@@ -8,7 +8,7 @@ use crate::genome::{EditingOutcome, Genome, GenomeDescription, GenomeEventCollec
 use std::io::Write;
 use rustc_hash::FxHashMap;
 use rand::prelude::*;
-use regex::Regex;
+use regex::{Match, Regex};
 
 
 #[derive(Clone, Debug)]
@@ -98,7 +98,7 @@ impl Cas12aABE {
 
     pub fn to_newick_tree(cells: &Vec<Cell>, parent_child_map: &HashMap<usize, Vec<usize>>, cell_ids_to_keep: &HashMap<usize, bool>, output: &String) {
         let mut out = File::create(output).unwrap();
-        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(parent_child_map, cell_ids_to_keep, &0, )).expect("Unable to write file");
+        write!(out, "{};\n", Cas12aABE::recursive_tree_builder(parent_child_map, cell_ids_to_keep, &0)).expect("Unable to write file");
     }
 
     pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>,
@@ -109,106 +109,34 @@ impl Cas12aABE {
                 let children = parent_child_map.get(current_index).unwrap();
                 let child_map = children.iter().map(|x| Cas12aABE::recursive_tree_builder(parent_child_map, cell_ids_to_keep, x))
                     .filter(|x| x != &"".to_string())
-                    .collect::<Vec<String>>().join(",");
-                if child_map.len() > 0 { format!("({})", child_map) } else { format!("") }
+                    .collect::<Vec<String>>();
+                if child_map.len() == 1 && child_map.get(0).unwrap() == "" {
+                    "".to_string()
+                } else if child_map.len() == 1 {
+                    let re = Regex::new(r"^(.*):(\d+)$").unwrap();
+                    if let Some(caps) = re.captures(child_map.get(0).unwrap()) {
+                        // Extract the node and value parts as strings
+                        let node = caps.get(1).unwrap().as_str();
+                        let value: i32 = caps.get(2).unwrap().as_str().parse().unwrap();
+                        // Format the result back into the desired string
+                        format!("{}:{}", node,value+1)
+                    } else {
+                        // Return None if the input string doesn't match the pattern
+                        panic!("no match for {}",child_map.get(0).unwrap());
+                    }
+                } else if child_map.len() > 0 {
+                        format!("({})n{}:1", child_map.join(","),current_index)
+
+                } else { "".to_string() }
             }
             false => {
-                if cell_ids_to_keep.contains_key(current_index) {
-                    format!("n{}", current_index)
+                if cell_ids_to_keep.contains_key(current_index) && cell_ids_to_keep.get(current_index).unwrap() == &true {
+                    format!("n{}:1", current_index)
                 } else {
                     "".to_string()
                 }
             }
         }
-    }
-    pub fn iterative_tree_builder(
-        parent_child_map: &HashMap<usize, Vec<usize>>,
-        cell_ids_to_keep: &HashMap<usize, bool>,
-        root_index: &usize
-    ) -> String {
-        let mut stack = VecDeque::new();
-
-        // Start by pushing the root node onto the stack
-        stack.push_back((*root_index,0));
-        let mut full_reverse_string: Vec<Vec<u8>> = Vec::new();
-        let mut last_node : Option<(usize,usize)> = None;
-
-        while let Some(current_index) = stack.pop_front() {
-            match last_node {
-                None => {
-                    full_reverse_string.push(vec![b')']);
-                }
-                Some(x) => {
-                    // we're coming back up the tree towards the root
-                    if current_index.1 < x.1 {
-                        for i in current_index.1..x.1 {
-                            full_reverse_string.push(vec![b'(']);
-                        }
-
-                    } else if current_index.1 > x.1 {
-                        // we're going down a level(s) towards the leaves
-                        for i in x.1..current_index.1 {
-                            full_reverse_string.push(vec![b')']);
-                        }
-                    } else {
-                        if parent_child_map.contains_key(&current_index.0) || cell_ids_to_keep.contains_key(&current_index.0) {
-                            if cell_ids_to_keep.contains_key(&x.0) {
-                                full_reverse_string.push(vec![b',']);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if parent_child_map.contains_key(&current_index.0) {
-                let children = parent_child_map.get(&current_index.0).unwrap();
-
-                for child in children {
-                    stack.push_front((*child,current_index.1 +2));
-                }
-                full_reverse_string.push(format!("n{}", current_index.0).as_bytes().to_vec());
-                last_node = Some(current_index.clone());
-            } else {
-                if cell_ids_to_keep.contains_key(&current_index.0) {
-                    full_reverse_string.push(format!("n{}", current_index.0).as_bytes().to_vec());
-                } else {
-                    //println!("dropping node {}",current_index.0);
-                }
-                last_node = Some(current_index.clone());
-
-            }
-        }
-        match last_node {
-            None => {}
-            Some(x) => {
-                for i in 0..x.1 - 1 {
-                    full_reverse_string.push(vec![b'(']);
-                }
-            }
-        }
-
-        full_reverse_string.reverse();
-        // Return the final result for the root node
-
-        let mut res = String::from_utf8(full_reverse_string.into_iter().flatten().collect()).unwrap();
-        let re = Regex::new("\\(\\)").unwrap();
-        let mut re_count = re.find(&res).iter().count();
-        // we have to remove ((())) in three loops, etc
-        while re_count > 0 {
-            res = re.replace_all(res.as_str(), "").to_string();
-            re_count = re.find(&res).iter().count();
-        }
-
-        //println!("res {}",res);
-        let re = Regex::new(r"(n\d+)(n\d+)").unwrap();
-        let res = re.replace_all(res.as_str(), "$1,$2").to_string();
-        //println!("res {}",res);
-        let re = Regex::new(r"(n\d+)(\()").unwrap();
-        let res = re.replace_all(res.as_str(), "$1,$2").to_string();
-        //println!("res {}",res);
-        // Use the `replace_all` function to remove all matches of the pattern
-        re.replace_all(res.as_str(), "").to_string()
-
     }
 }
 
@@ -232,7 +160,7 @@ impl CellFactory for Cas12aABE {
         let mut ret = Vec::new();
 
         let existing_events = genome.filter_events_and_get_Outcomes(&self.genome, &input_cell.events).iter().map(|x| {
-            (x.start,x.clone())
+            (x.start, x.clone())
         }).collect::<HashMap<u32, EditingOutcome>>();
 
 
@@ -254,7 +182,7 @@ impl CellFactory for Cas12aABE {
                         }
                         Some(x) => {
                             match x.internal_outcome_id {
-                                0 => {panic!("We shouldn't store 0 outcomes")}
+                                0 => { panic!("We shouldn't store 0 outcomes") }
                                 1 => ret.push(b'1'),
                                 _ => panic!("unknown symbol")
                             }
@@ -301,16 +229,16 @@ mod tests {
         root_index: &usize
          */
         let mut parent_child_map: HashMap<usize, Vec<usize>> = HashMap::new();
-        let mut cell_ids_to_keep: HashMap<usize,bool> = HashMap::new();
+        let mut cell_ids_to_keep: HashMap<usize, bool> = HashMap::new();
         let root_index: usize = 0;
 
-        parent_child_map.insert(0,vec!(1,2));
-        parent_child_map.insert(1,vec!(3,4));
-        parent_child_map.insert(2,vec!(5,6));
-        cell_ids_to_keep.insert(3,true);
-        cell_ids_to_keep.insert(5,true);
-        cell_ids_to_keep.insert(4,true);
-        cell_ids_to_keep.insert(6,true);
-        println!("tree {} ",Cas12aABE::iterative_tree_builder(&parent_child_map,&cell_ids_to_keep,&root_index));
+        parent_child_map.insert(0, vec!(1, 2));
+        parent_child_map.insert(1, vec!(3, 4));
+        parent_child_map.insert(2, vec!(5, 6));
+        cell_ids_to_keep.insert(3, true);
+        cell_ids_to_keep.insert(5, true);
+        cell_ids_to_keep.insert(4, true);
+        cell_ids_to_keep.insert(6, true);
+        println!("tree {} ", Cas12aABE::iterative_tree_builder(&parent_child_map, &cell_ids_to_keep, &root_index));
     }
 }
