@@ -44,7 +44,7 @@ pub struct EditingOutcome {
 
 /**
 This struct can be somewhat heavyweight
-**/
+*
 #[derive(Clone)]
 pub struct GenomeEventCollection {
     genomes: HashMap<GenomeDescription,ArrayBackedIntervalTree<u32,EditingOutcome>>,
@@ -145,4 +145,100 @@ impl GenomeEventCollection {
         }
     }
 }
+*/
+#[derive(Clone)]
+pub struct GenomeEventCollection {
+    genomes: HashMap<GenomeDescription,HashMap<u32,EditingOutcome>>,
+    genomes_offsets: HashMap<GenomeDescription,u16>,
+    current_genome_offset: u16,
+    key_to_outcome: HashMap<GenomeEventKey,EditingOutcome>,
+    outcome_to_key: HashMap<EditingOutcome,GenomeEventKey>,
+}
+
+impl GenomeEventCollection {
+    pub fn new() -> GenomeEventCollection {
+        GenomeEventCollection{
+            genomes: HashMap::new(),
+            genomes_offsets: HashMap::new(),
+            current_genome_offset: 0,
+            key_to_outcome: HashMap::new(),
+            outcome_to_key: HashMap::new() }
+    }
+
+    fn create_event(&mut self, genome: &GenomeDescription, outcome: &EditingOutcome) -> GenomeEventKey {
+
+        GenomeEventKey{
+            position_index: outcome.start.clone(),
+            genome_index: *self.genomes_offsets.get(genome).unwrap(),
+            outcome_index: outcome.internal_outcome_id.clone(),
+        }
+    }
+
+    pub fn filter_events_and_get_outcomes(&self, genome: &GenomeDescription, set: &HashSet<GenomeEventKey>) -> Vec<EditingOutcome> {
+        if !self.genomes.contains_key(genome) {
+            Vec::new()
+        } else {
+            let genome_offset = self.genomes_offsets.get(genome).unwrap();
+            set.iter().map(|it| {
+                match self.key_to_outcome.get(it) {
+                    None => {
+                        panic!("We dont know about event {:?}", it);
+                    }
+                    Some(x) => {
+                        match *genome_offset == it.genome_index {
+                            true => {
+                                Some(x.clone())
+                            }
+                            false => {
+                                None
+                            }
+                        }
+                    }
+                }
+            }).flatten().collect::<Vec<EditingOutcome>>()
+        }
+    }
+
+    pub fn add_event(&mut self, genome: &GenomeDescription, outcome: EditingOutcome) -> Option<GenomeEventKey> {
+
+        match self.genomes.contains_key(genome) {
+            false => {
+                // we dont have a record of this genome -- set it up and add the new outcome
+                let mut lt = HashMap::new();
+                lt.insert(outcome.start, outcome.clone());
+                self.genomes.insert(genome.clone(), lt);
+                println!("adding to find key {:?}",genome);
+
+                self.genomes_offsets.insert(genome.clone(), self.current_genome_offset.clone());
+                self.current_genome_offset += 1;
+                let id = self.create_event(genome,&outcome);
+
+                self.key_to_outcome.insert(id.clone(), outcome.clone());
+                self.outcome_to_key.insert(outcome.clone(), id.clone());
+                Some(id)
+            }
+            true => {
+                // we have a record -- check (1) for overlap and (2) if we allow that.
+                let id = self.create_event(genome,&outcome);
+                self.key_to_outcome.insert(id.clone(), outcome.clone());
+                self.outcome_to_key.insert(outcome.clone(), id.clone());
+
+                match self.genomes.get(genome).unwrap().contains_key(&outcome.start) {
+                    false => {
+                        self.genomes.get_mut(genome).unwrap().insert(outcome.start,outcome.clone());
+                        let id = self.create_event(genome,&outcome);
+
+                        self.key_to_outcome.insert(id.clone(), outcome.clone());
+                        self.outcome_to_key.insert(outcome.clone(), id.clone());
+                        Some(id)
+                    },
+                    true => {
+                        Some(self.outcome_to_key.get(&outcome).unwrap().clone())
+                    }
+                }
+            }
+        }
+    }
+}
+
 

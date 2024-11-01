@@ -38,7 +38,7 @@ impl Cas12aABE {
             genome: GenomeDescription {
                 genome: Genome::ABECas12a,
                 name: description,
-                allows_overlap: false,
+                allows_overlap: true,
             },
         }
     }
@@ -57,7 +57,7 @@ impl Cas12aABE {
                 start: *position,
                 stop: *position + 1, // [x,y) intervals
                 change: Modification::Substitution,
-                nucleotides: vec![b'A'],
+                nucleotides: vec![b'G'],
                 internal_outcome_id: 1,
             };
             genome.add_event(&self.genome, outcome)
@@ -159,7 +159,7 @@ impl CellFactory for Cas12aABE {
     fn to_mix_array(&mut self, genome: &GenomeEventCollection, drop_rate: &f64, input_cell: &mut Cell) -> Option<Vec<u8>> {
         let mut ret = Vec::new();
 
-        let existing_events = genome.filter_events_and_get_Outcomes(&self.genome, &input_cell.events).iter().map(|x| {
+        let existing_events = genome.filter_events_and_get_outcomes(&self.genome, &input_cell.events).iter().map(|x| {
             (x.start, x.clone())
         }).collect::<HashMap<u32, EditingOutcome>>();
 

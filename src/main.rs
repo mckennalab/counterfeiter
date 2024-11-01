@@ -99,11 +99,12 @@ fn main() {
                                                  &parameters.integrated_barcodes,
                                                  "50mer".to_string());
 
-    let mut genome = GenomeEventCollection::new();
 
 
 
     for trial in 0..parameters.trials {
+        let mut genome = GenomeEventCollection::new();
+
         let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.divide(&mut x, &mut genome)).next().unwrap();
         let mut generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
 
@@ -142,8 +143,26 @@ fn main() {
         Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &cell_ids_to_keep, &parameters.output_tree.to_string());
         println!("generating summary");
 
+        let proportions = calculate_column_proportions(&parameters.output_mix).unwrap();
 
+        // Open the file in append mode, creating it if it doesn't exist
+        let mut file = OpenOptions::new()
+            .append(true) // Open in append mode
+            .create(true) // Create the file if it doesn't exist
+            .open("simulation_summary.txt").unwrap();
 
+        // Write the line to the file
+        let output_str = proportions.iter().map(|x| {
+            format!("{:.3}", *x)
+        }).collect::<Vec<String>>().join("\t");
+        //println!("output string {}",output_str);
+        file.write_all(format!("{}\t", trial+1).as_bytes()).unwrap();
+
+        file.write_all(output_str.as_bytes()).unwrap();
+        file.write_all("\n".as_bytes()).unwrap();
+
+        // Optionally, flush to ensure all data is written
+        file.flush().unwrap();
     }
 }
 
@@ -227,7 +246,7 @@ fn calculate_column_proportions(filename: &String) -> Result<Vec<f64>, Box<dyn E
 
     // Calculate proportions
     let proportions: Vec<f64> = counts.iter()
-        .map(|&count| count as f64 / nrows as f64)
+        .map(|&count| count as f64 / f64::max(nrows as f64,1.0) )
         .collect();
 
     Ok(proportions)
