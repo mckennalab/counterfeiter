@@ -22,6 +22,161 @@ pub struct Cas12aABE {
 
 
 impl Cas12aABE {
+    // Function to process the pileup bases string and count variant bases
+    fn process_bases(bases: &str, ref_base: u8) -> HashMap<u8, usize> {
+        let mut counts: HashMap<u8, usize> = HashMap::new();
+        let mut i = 0;
+        let chars: Vec<char> = bases.chars().collect();
+        let mut skip_next = 0;
+
+        while i < chars.len() {
+            if skip_next > 0 {
+                skip_next -= 1;
+                i += 1;
+                continue;
+            }
+
+            match chars[i] {
+                '^' => {
+                    // Start of a read segment; skip the next character (mapping quality)
+                    i += 2;
+                }
+                '$' => {
+                    // End of a read segment; move to the next character
+                    i += 1;
+                }
+                '+' | '-' => {
+                    // Insertion or deletion
+                    let sign = chars[i];
+                    i += 1;
+                    // Extract the number of bases inserted/deleted
+                    let mut num_str = String::new();
+                    while i < chars.len() && chars[i].is_digit(10) {
+                        num_str.push(chars[i]);
+                        i += 1;
+                    }
+                    let num_bases: usize = num_str.parse().unwrap_or(0);
+                    // Skip the inserted or deleted bases
+                    skip_next = num_bases;
+                }
+                '.' | ',' => {
+                    // Match to the reference base
+                    let base = ref_base.to_ascii_uppercase();
+                    *counts.entry(base).or_insert(0) += 1;
+                    i += 1;
+                }
+                'A' | 'C' | 'G' | 'T' | 'N' | 'a' | 'c' | 'g' | 't' | 'n' => {
+                    // Observed base; convert to uppercase
+                    let base = chars[i].to_ascii_uppercase();
+                    *counts.entry(base as u8).or_insert(0) += 1;
+                    i += 1;
+                }
+                _ => {
+                    // Other symbols; skip
+                    i += 1;
+                }
+            }
+        }
+
+        counts
+    }
+
+    pub fn from_mpileup_file(filename: &String,
+                             minimum_coverage: &usize,
+                             minimum_mutation_rate: &f64,
+                             allowed_mutations: &HashMap<u8, u8>,
+                             description: &String,
+                             generations: &usize,
+                             duplicate_barcodes: &usize,
+                             output_file: &mut File,
+    ) -> Cas12aABE {
+        let mut mutation_counts: Vec<f64> = Vec::new();
+        let mut mutation_positions: Vec<u32> = Vec::new();
+
+        let file = File::open(filename).unwrap();
+        let reader = BufReader::new(file);
+
+        // Process each line of the Mpileup file
+        for (index, line) in reader.lines().enumerate() {
+            let line = line.unwrap();
+            if line.trim().is_empty() {
+                //eprintln!("Warning: Skipping empty line: {}", line);
+                continue;
+            }
+            let fields: Vec<&str> = line.split('\t').collect();
+            if fields.len() < 5 {
+                // eprintln!("Warning: Skipping malformed line: {}", line);
+                continue;
+            }
+
+            let pos = u32::from_str(fields[1]).unwrap();
+            let ref_base = fields[2].as_bytes()[0];
+            if allowed_mutations.contains_key(&ref_base) {
+                let read_count: usize = fields[3].parse().unwrap_or(0);
+                let bases = fields[4];
+
+                let counts = Cas12aABE::process_bases(bases, ref_base);
+
+                // Calculate frequencies
+                let total_bases: usize = counts.values().sum();
+                let mutated_prop = *counts.get(allowed_mutations.get(&ref_base).unwrap()).unwrap_or(&0) as f64 / total_bases as f64;
+                //let mutated_prop = mutated_prop / (*generations as f64);
+                if total_bases >= *minimum_coverage && mutated_prop >= *minimum_mutation_rate {
+                    mutation_counts.push(mutated_prop);
+                    mutation_positions.push(pos);
+                }
+            } else {
+                //eprintln!("Warning: Skipping non-targeted base line: {}", line);
+            }
+        }
+        // now duplicate out to the number of barcodes we'll use
+
+        let mut final_edit_rates: Vec<Vec<f64>> = Vec::new();
+        let mut final_edit_rates_orig: Vec<f64> = Vec::new();
+        let mut final_edit_positions: Vec<u32> = Vec::new();
+
+        println!("edits {:?}", mutation_counts);
+        println!("edits len {}", mutation_counts.len());
+
+        for i in (0..*duplicate_barcodes) {
+            let final_edit_rate_barcode: Vec<f64> = mutation_counts.iter().enumerate().map(|(index, x)| {
+                let new_rate = 1.0 - f64::exp(f64::ln((1.0 - x)) / (*generations as f64));
+                new_rate
+            }).collect();
+            final_edit_rates.push(final_edit_rate_barcode);
+            final_edit_rates_orig.append(&mut mutation_counts.clone());
+            final_edit_positions.append(&mut mutation_positions.iter().map(|x| *x + (i as u32 * mutation_positions.len() as u32)).collect());
+        }
+
+        // header
+        output_file.write_all(format!("run").as_bytes());
+        for i in 0..final_edit_rates_orig.len() {
+            output_file.write_all(format!("\tindex{}", i).as_bytes());
+        }
+        output_file.write_all(format!("\n").as_bytes());
+
+        // summary info
+        let output_str = final_edit_rates_orig.iter().map(|x| {
+            format!("{:.3}", *x)
+        }).collect::<Vec<String>>().join("\t");
+
+        //println!("output string {}",output_str);
+        output_file.write_all(format!("0\t{}\n", output_str).as_bytes()).unwrap();
+
+        //println!("Editing rate size {}",mutation_positions.len());
+        Cas12aABE {
+            edit_rate: final_edit_rates,
+            positions: final_edit_positions,
+            targets_per_barcode: mutation_counts.len() as u32,
+            description: description.clone(),
+            genome: GenomeDescription {
+                genome: Genome::ABECas12a,
+                name: "Cas12aFrommPileup".to_string(),
+                allows_overlap: false,
+            },
+        }
+    }
+
     pub fn from_editing_rate(rate: &f64,
                              target_count: &u32,
                              integration_count: &u32,
@@ -119,14 +274,13 @@ impl Cas12aABE {
                         let node = caps.get(1).unwrap().as_str();
                         let value: i32 = caps.get(2).unwrap().as_str().parse().unwrap();
                         // Format the result back into the desired string
-                        format!("{}:{}", node,value+1)
+                        format!("{}:{}", node, value + 1)
                     } else {
                         // Return None if the input string doesn't match the pattern
-                        panic!("no match for {}",child_map.get(0).unwrap());
+                        panic!("no match for {}", child_map.get(0).unwrap());
                     }
                 } else if child_map.len() > 0 {
-                        format!("({})n{}:1", child_map.join(","),current_index)
-
+                    format!("({})n{}:1", child_map.join(","), current_index)
                 } else { "".to_string() }
             }
             false => {
@@ -141,7 +295,7 @@ impl Cas12aABE {
 }
 
 impl CellFactory for Cas12aABE {
-    fn divide(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
+    fn mutate(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
         &self.edit_rate.iter().enumerate().for_each(|(barcode_index, barcode)| {
             barcode.iter().enumerate().for_each(|(position, edit_rate)| {
                 let pos = (position + (barcode_index * self.targets_per_barcode as usize)) as EventPosition;
@@ -210,6 +364,26 @@ impl CellFactory for Cas12aABE {
             _ => "1".to_string()
         }
     }
+
+    fn from_file(file_string: &String) -> Self {
+        let tokens: Vec<&str> = file_string.split(",").collect();
+        assert!(tokens.len() == 4);
+        let generations = tokens.get(0).unwrap().parse::<usize>().unwrap();
+        let minimum_coverage = tokens.get(0).unwrap().parse::<usize>().unwrap();
+        let minimum_mutation_rate = tokens.get(0).unwrap().parse::<f64>().unwrap();
+        let mut output_file = File::open("mutation_rates_cas12a.txt").unwrap();
+        let mut allowed_mutations = HashMap::new();
+        allowed_mutations.insert(b'A', b'G');
+        allowed_mutations.insert(b'T', b'C');
+        Cas12aABE::from_mpileup_file(&tokens.get(3).unwrap().to_string(),
+                                     &minimum_coverage,
+                                     &minimum_mutation_rate,
+                                     &allowed_mutations,
+                                     &"FROMFILE".to_string(),
+                                     &generations,
+                                     &0,
+                                     &mut output_file)
+    }
 }
 
 
@@ -239,6 +413,6 @@ mod tests {
         cell_ids_to_keep.insert(5, true);
         cell_ids_to_keep.insert(4, true);
         cell_ids_to_keep.insert(6, true);
-        println!("tree {} ", Cas12aABE::iterative_tree_builder(&parent_child_map, &cell_ids_to_keep, &root_index));
+        println!("tree {} ", Cas12aABE::recursive_tree_builder(&parent_child_map, &cell_ids_to_keep, &root_index));
     }
 }

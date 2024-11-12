@@ -11,6 +11,7 @@ extern crate rand;
 extern crate array_tool;
 extern crate bio;
 extern crate rustc_hash;
+extern crate rand_distr;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufRead, Write};
@@ -25,14 +26,14 @@ use crate::cell::Cell;
 use crate::genome::GenomeEventCollection;
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
 //use crate::lineagemodels::crispr_bit::{CRISPRBitRate, CRISPRBits};
-use crate::lineagemodels::model::SimpleDivision;
+use crate::lineagemodels::model::{DivisionModel, SimpleDivision};
 use crate::lineagemodels::model::CellFactory;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    //#[clap(long)]
-    //mpileup: String,
+    #[clap(long)]
+    mpileup: String,
 
     #[clap(long)]
     output_mix: String,
@@ -43,8 +44,8 @@ struct Args {
     #[clap(long)]
     generations: usize,
 
-    #[clap(long)]
-    sites_per_barcode: u32,
+    //#[clap(long)]
+    //sites_per_barcode: u32,
 
     #[clap(long)]
     mpileupgenerations: usize,
@@ -58,8 +59,8 @@ struct Args {
     #[clap(long)]
     trials: usize,
 
-    #[clap(long)]
-    editrate: f64,
+    //#[clap(long)]
+    //editrate: f64,
 
     #[clap(long)]
     subsampling_number: usize,
@@ -93,19 +94,32 @@ fn main() {
                                                      &mut file);
 
     file.flush();
-    */
+
+
     let mut cas12a = Cas12aABE::from_editing_rate(&parameters.editrate,
                                                  &parameters.sites_per_barcode,
                                                  &parameters.integrated_barcodes,
                                                  "50mer".to_string());
+    */
 
-
+    let mut allowed_mutations = HashMap::new();
+    allowed_mutations.insert(b'A',b'G');
+    allowed_mutations.insert(b'T',b'C');
+    let mut fl = File::create("pileup_output_txt").unwrap();
+    let mut cas12a = Cas12aABE::from_mpileup_file(&parameters.mpileup,
+                                                  &100,
+                                                  &0.001,
+                                                  &allowed_mutations,
+                                                  &"MPILEUP".to_string(),
+                                                  &parameters.mpileupgenerations,
+                                                  &(parameters.integrated_barcodes as usize),
+                                                  &mut fl);
 
 
     for trial in 0..parameters.trials {
         let mut genome = GenomeEventCollection::new();
 
-        let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.divide(&mut x, &mut genome)).next().unwrap();
+        let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.mutate(&mut x, &mut genome)).next().unwrap();
         let mut generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
 
         for i in 0..parameters.generations {
@@ -116,7 +130,7 @@ fn main() {
             current_cells.into_iter().for_each(|mut cell| {
                 let parent_id = cell.id;
 
-                let generated_children = cas12a.divide(&mut cell, &mut genome).into_iter().
+                let generated_children = cas12a.mutate(&mut cell, &mut genome).into_iter().
                     flat_map(|mut x| simple_division.divide(&mut x, &mut genome)).collect::<Vec<Cell>>();
 
                 for child in generated_children {
