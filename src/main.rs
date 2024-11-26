@@ -12,6 +12,8 @@ extern crate array_tool;
 extern crate bio;
 extern crate rustc_hash;
 extern crate rand_distr;
+#[macro_use]
+extern crate log;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufRead, Write};
@@ -20,8 +22,10 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+
 use std::collections::HashMap;
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use pretty_trace::PrettyTrace;
 use crate::cell::Cell;
 use crate::genome::GenomeEventCollection;
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
@@ -29,47 +33,89 @@ use crate::lineagemodels::cas12a_abe::Cas12aABE;
 use crate::lineagemodels::model::{DivisionModel, SimpleDivision};
 use crate::lineagemodels::model::CellFactory;
 
+#[derive(Subcommand, Debug)]
+enum Cmd {
+    Pileup {
+        #[clap(long)]
+        mpileup: String,
+
+        #[clap(long)]
+        output_mix: String,
+
+        #[clap(long)]
+        output_tree: String,
+
+        #[clap(long)]
+        generations: usize,
+
+        #[clap(long)]
+        mpileupgenerations: usize,
+
+        #[clap(long)]
+        integrated_barcodes: u32,
+
+        #[clap(long)]
+        barcode_drop_rate: f64,
+
+        #[clap(long)]
+        trials: usize,
+
+        #[clap(long)]
+        subsampling_number: usize,
+
+        #[clap(long)]
+        interdependent_rate: f64,
+
+    },
+    Rate {
+        #[clap(long)]
+        output_mix: String,
+
+        #[clap(long)]
+        output_tree: String,
+
+        #[clap(long)]
+        generations: usize,
+
+        #[clap(long)]
+        sites_per_barcode: u32,
+
+        #[clap(long)]
+        integrated_barcodes: u32,
+
+        #[clap(long)]
+        barcode_drop_rate: f64,
+
+        #[clap(long)]
+        editrate: f64,
+
+        #[clap(long)]
+        subsampling_number: usize,
+
+        #[clap(long)]
+        interdependent_rate: f64,
+    },
+}
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(long)]
-    mpileup: String,
-
-    #[clap(long)]
-    output_mix: String,
-
-    #[clap(long)]
-    output_tree: String,
-
-    #[clap(long)]
-    generations: usize,
-
-    //#[clap(long)]
-    //sites_per_barcode: u32,
-
-    #[clap(long)]
-    mpileupgenerations: usize,
-
-    #[clap(long)]
-    integrated_barcodes: u32,
-
-    #[clap(long)]
-    barcode_drop_rate: f64,
-
-    #[clap(long)]
-    trials: usize,
-
-    //#[clap(long)]
-    //editrate: f64,
-
-    #[clap(long)]
-    subsampling_number: usize,
-
-
+    #[clap(subcommand)]
+    cmd: Cmd,
 }
 
 fn main() {
+    PrettyTrace::new().ctrlc().on();
+
+    if let Err(_) = std::env::var("RUST_LOG") {
+        std::env::set_var("RUST_LOG", "info");
+    }
+
+    pretty_env_logger::init_timed();
+
     let parameters = Args::parse();
+    trace!("{:?}", &parameters.cmd);
+
 
     // store the relationship between children and parents
     let mut parent_child_map: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -79,104 +125,137 @@ fn main() {
     mp.insert(b'A', b'G');
 
     let mut simple_division = SimpleDivision { offspring_count: 2 };
-    /*
-
-        // Open the file in append mode, creating it if it doesn't exist
-        let mut file = File::create("simulation_summary.txt").unwrap();
-
-        let mut cBits = Cas12aABE::from_mpileup_file(&parameters.mpileup,
-                                                     &20,
-                                                     &0.005,
-                                                     mp,
-                                                     "50mer".to_string(),
-                                                     &parameters.mpileupgenerations,
-                                                     &parameters.integrated_barcodes,
-                                                     &mut file);
-
-    file.flush();
-
-
-    let mut cas12a = Cas12aABE::from_editing_rate(&parameters.editrate,
-                                                 &parameters.sites_per_barcode,
-                                                 &parameters.integrated_barcodes,
-                                                 "50mer".to_string());
-    */
 
     let mut allowed_mutations = HashMap::new();
-    allowed_mutations.insert(b'A',b'G');
-    allowed_mutations.insert(b'T',b'C');
+    allowed_mutations.insert(b'A', b'G');
+    allowed_mutations.insert(b'T', b'C');
     let mut fl = File::create("pileup_output_txt").unwrap();
-    let mut cas12a = Cas12aABE::from_mpileup_file(&parameters.mpileup,
-                                                  &100,
-                                                  &0.001,
-                                                  &allowed_mutations,
-                                                  &"MPILEUP".to_string(),
-                                                  &parameters.mpileupgenerations,
-                                                  &(parameters.integrated_barcodes as usize),
-                                                  &mut fl);
 
+    match &parameters.cmd {
+        Cmd::Rate {
+            output_mix,
+            output_tree,
+            generations,
+            sites_per_barcode,
+            integrated_barcodes,
+            barcode_drop_rate,
+            editrate,
+            subsampling_number,
+            interdependent_rate
+        } => {
+            let mut cas12a = Cas12aABE::from_editing_rate(
+                editrate,
+                sites_per_barcode,
+                integrated_barcodes,
+                "50mer".to_string(),
+                interdependent_rate,
+            );
 
-    for trial in 0..parameters.trials {
-        let mut genome = GenomeEventCollection::new();
+            let mut genome = GenomeEventCollection::new();
 
-        let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.mutate(&mut x, &mut genome)).next().unwrap();
-        let mut generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
+            let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.mutate(&mut x, &mut genome)).next().unwrap();
+            let mut cell_generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
 
-        for i in 0..parameters.generations {
-            let mut next_cells = Vec::new();
+            for i in 0..*generations {
+                let mut next_cells = Vec::new();
 
-            generations.insert(i, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
+                cell_generations.insert(i, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
-            current_cells.into_iter().for_each(|mut cell| {
-                let parent_id = cell.id;
+                current_cells.into_iter().for_each(|mut cell| {
+                    let parent_id = cell.id;
 
-                let generated_children = cas12a.mutate(&mut cell, &mut genome).into_iter().
-                    flat_map(|mut x| simple_division.divide(&mut x, &mut genome)).collect::<Vec<Cell>>();
+                    let generated_children = cas12a.mutate(&mut cell, &mut genome).into_iter().
+                        flat_map(|mut x| simple_division.divide(&mut x, &mut genome)).collect::<Vec<Cell>>();
 
-                for child in generated_children {
-                    let child_id = child.id;
-                    parent_child_map.entry(parent_id).or_insert(Vec::new()).push(child_id);
-                    next_cells.push(child);
-                }
-            });
+                    for child in generated_children {
+                        let child_id = child.id;
+                        parent_child_map.entry(parent_id).or_insert(Vec::new()).push(child_id);
+                        next_cells.push(child);
+                    }
+                });
 
-            println!("{}: {}, {}", i, next_cells.len(), next_cells.iter().next().unwrap().id);
-            current_cells = next_cells;
+                println!("{}: {}, {}", i, next_cells.len(), next_cells.iter().next().unwrap().id);
+                current_cells = next_cells;
+            }
+
+            // subsample cells that we're interested in the final generation
+            let cell_ids: Vec<usize> = current_cells.iter().map(|c| c.id.clone()).collect();
+            let mut cell_ids_to_keep: HashMap<usize, bool> = subsample(&cell_ids, *subsampling_number).iter().map(|x| (*x, true)).collect();
+
+            cell_generations.insert(*generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
+
+            println!("generating mix input file");
+            cas12a.to_mix_input(&genome, &mut current_cells, barcode_drop_rate, &mut cell_ids_to_keep, output_mix);
+
+            println!("generating tree file");
+            Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &cell_ids_to_keep, &(*output_tree).to_string());
+            println!("generating summary");
+
         }
+        Cmd::Pileup {
+            mpileup,
+            output_mix,
+            output_tree,
+            generations,
+            mpileupgenerations,
+            integrated_barcodes,
+            barcode_drop_rate,
+            trials,
+            subsampling_number,
+            interdependent_rate
+        } => {
+            let mut cas12a = Cas12aABE::from_mpileup_file(mpileup,
+                                                          &100,
+                                                          &0.001,
+                                                          &allowed_mutations,
+                                                          &"MPILEUP".to_string(),
+                                                          mpileupgenerations,
+                                                          &(*integrated_barcodes as usize),
+                                                          &mut fl,
+                                                          interdependent_rate);
 
-        // subsample cells that we're interested in the final generation
-        let cell_ids: Vec<usize> = current_cells.iter().map(|c| c.id.clone()).collect();
-        let mut cell_ids_to_keep : HashMap<usize,bool> = subsample(&cell_ids, parameters.subsampling_number).iter().map(|x| (*x,true)).collect();
 
-        generations.insert(parameters.generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
+            let mut genome = GenomeEventCollection::new();
 
-        println!("generating mix input file");
-        cas12a.to_mix_input(&genome, &mut current_cells, &parameters.barcode_drop_rate, &mut cell_ids_to_keep, &parameters.output_mix);
+            let mut current_cells = vec![Cell::new()].into_iter().map(|mut x| cas12a.mutate(&mut x, &mut genome)).next().unwrap();
+            let mut cell_generations: FxHashMap<usize, Vec<Cell>> = FxHashMap::default();
 
-        println!("generating tree file");
-        Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &cell_ids_to_keep, &parameters.output_tree.to_string());
-        println!("generating summary");
+            for i in 0..*generations {
+                let mut next_cells = Vec::new();
 
-        let proportions = calculate_column_proportions(&parameters.output_mix).unwrap();
+                cell_generations.insert(i, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
-        // Open the file in append mode, creating it if it doesn't exist
-        let mut file = OpenOptions::new()
-            .append(true) // Open in append mode
-            .create(true) // Create the file if it doesn't exist
-            .open("simulation_summary.txt").unwrap();
+                current_cells.into_iter().for_each(|mut cell| {
+                    let parent_id = cell.id;
 
-        // Write the line to the file
-        let output_str = proportions.iter().map(|x| {
-            format!("{:.3}", *x)
-        }).collect::<Vec<String>>().join("\t");
-        //println!("output string {}",output_str);
-        file.write_all(format!("{}\t", trial+1).as_bytes()).unwrap();
+                    let generated_children = cas12a.mutate(&mut cell, &mut genome).into_iter().
+                        flat_map(|mut x| simple_division.divide(&mut x, &mut genome)).collect::<Vec<Cell>>();
 
-        file.write_all(output_str.as_bytes()).unwrap();
-        file.write_all("\n".as_bytes()).unwrap();
+                    for child in generated_children {
+                        let child_id = child.id;
+                        parent_child_map.entry(parent_id).or_insert(Vec::new()).push(child_id);
+                        next_cells.push(child);
+                    }
+                });
 
-        // Optionally, flush to ensure all data is written
-        file.flush().unwrap();
+                println!("{}: {}, {}", i, next_cells.len(), next_cells.iter().next().unwrap().id);
+                current_cells = next_cells;
+            }
+
+            // subsample cells that we're interested in the final generation
+            let cell_ids: Vec<usize> = current_cells.iter().map(|c| c.id.clone()).collect();
+            let mut cell_ids_to_keep: HashMap<usize, bool> = subsample(&cell_ids, *subsampling_number).iter().map(|x| (*x, true)).collect();
+
+            cell_generations.insert(*generations, current_cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
+
+            println!("generating mix input file");
+            cas12a.to_mix_input(&genome, &mut current_cells, barcode_drop_rate, &mut cell_ids_to_keep, output_mix);
+
+            println!("generating tree file");
+            Cas12aABE::to_newick_tree(&current_cells, &parent_child_map, &cell_ids_to_keep, &output_tree.to_string());
+            println!("generating summary");
+
+        }
     }
 }
 
@@ -260,7 +339,7 @@ fn calculate_column_proportions(filename: &String) -> Result<Vec<f64>, Box<dyn E
 
     // Calculate proportions
     let proportions: Vec<f64> = counts.iter()
-        .map(|&count| count as f64 / f64::max(nrows as f64,1.0) )
+        .map(|&count| count as f64 / f64::max(nrows as f64, 1.0))
         .collect();
 
     Ok(proportions)

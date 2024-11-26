@@ -18,6 +18,7 @@ pub struct Cas12aABE {
     pub targets_per_barcode: u32,
     description: String,
     genome: GenomeDescription,
+    interdependent_rate: f64,
 }
 
 
@@ -89,6 +90,8 @@ impl Cas12aABE {
                              generations: &usize,
                              duplicate_barcodes: &usize,
                              output_file: &mut File,
+                             interdependent_rate: &f64,
+
     ) -> Cas12aABE {
         let mut mutation_counts: Vec<f64> = Vec::new();
         let mut mutation_positions: Vec<u32> = Vec::new();
@@ -174,6 +177,7 @@ impl Cas12aABE {
                 name: "Cas12aFrommPileup".to_string(),
                 allows_overlap: false,
             },
+            interdependent_rate: *interdependent_rate,
         }
     }
 
@@ -181,6 +185,7 @@ impl Cas12aABE {
                              target_count: &u32,
                              integration_count: &u32,
                              description: String,
+                             interdependent_rate: &f64,
     ) -> Cas12aABE {
         let edit_rates = (0..(*integration_count)).map(|e|
         (0..*target_count).map(|x| *rate).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>();
@@ -195,6 +200,7 @@ impl Cas12aABE {
                 name: description,
                 allows_overlap: true,
             },
+            interdependent_rate: *interdependent_rate,
         }
     }
     fn draw_new_event(&self, position: &u32, genome: &mut GenomeEventCollection) -> Option<GenomeEventKey> {
@@ -299,6 +305,7 @@ impl CellFactory for Cas12aABE {
         &self.edit_rate.iter().enumerate().for_each(|(barcode_index, barcode)| {
             barcode.iter().enumerate().for_each(|(position, edit_rate)| {
                 let pos = (position + (barcode_index * self.targets_per_barcode as usize)) as EventPosition;
+                let previous_pos_edited = (position + (barcode_index * self.targets_per_barcode as usize)) as EventPosition;
                 match self.draw_new_event(&(pos as u32), genome) {
                     None => {}
                     Some(x) => {
@@ -367,11 +374,12 @@ impl CellFactory for Cas12aABE {
 
     fn from_file(file_string: &String) -> Self {
         let tokens: Vec<&str> = file_string.split(",").collect();
-        assert!(tokens.len() == 4);
+        assert!(tokens.len() == 5);
         let generations = tokens.get(0).unwrap().parse::<usize>().unwrap();
-        let minimum_coverage = tokens.get(0).unwrap().parse::<usize>().unwrap();
-        let minimum_mutation_rate = tokens.get(0).unwrap().parse::<f64>().unwrap();
-        let mut output_file = File::open("mutation_rates_cas12a.txt").unwrap();
+        let minimum_coverage = tokens.get(1).unwrap().parse::<usize>().unwrap();
+        let minimum_mutation_rate = tokens.get(2).unwrap().parse::<f64>().unwrap();
+        let interdependent_rate = tokens.get(3).unwrap().parse::<f64>().unwrap();
+        let mut output_file = File::open(tokens.get(4).unwrap()).unwrap();
         let mut allowed_mutations = HashMap::new();
         allowed_mutations.insert(b'A', b'G');
         allowed_mutations.insert(b'T', b'C');
@@ -382,7 +390,8 @@ impl CellFactory for Cas12aABE {
                                      &"FROMFILE".to_string(),
                                      &generations,
                                      &0,
-                                     &mut output_file)
+                                     &mut output_file,
+                                     &interdependent_rate)
     }
 }
 
