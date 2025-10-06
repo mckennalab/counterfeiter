@@ -190,7 +190,13 @@ impl CellFactory for Cas9WT {
     }
 
     fn to_mix_array(&self, genome_lookup_object: &GenomeEventCollection, input_cell: &mut Cell) -> Option<Vec<u8>> {
-        let existing_events = genome_lookup_object.genomes.get(&self.genome).unwrap();
+        let existing_events: &HashMap<u32,EditingOutcome> = match genome_lookup_object.genomes.get(&self.genome) {
+            None => {
+                error!("genome does not exist {:?}, likely because we haven't edited that genome",&self.genome);
+                &HashMap::default()
+            }
+            Some(x) => {x}
+        };
         
         println!("existing len {}", existing_events.len());
         let mut has_it = 0;
