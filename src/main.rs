@@ -32,7 +32,7 @@ use pretty_trace::PrettyTrace;
 use crate::cell::Cell;
 use crate::genome::{create_mix_file, GenomeEventCollection};
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
-
+use crate::lineagemodels::cas9_WT::Cas9WT;
 use crate::lineagemodels::model::{DivisionModel, SimpleDivision};
 use crate::lineagemodels::model::CellFactory;
 
@@ -157,23 +157,32 @@ fn main() {
             subsampling_number,
             interdependent_rate
         } => {
-            let mut cas12a = Box::new(Cas12aABE::from_editing_rate(
+            /*let cas12a = Box::new(Cas12aABE::from_editing_rate(
                 editrate,
                 sites_per_barcode,
                 integrated_barcodes,
                 "50mer".to_string(),
                 barcode_drop_rate,
                 interdependent_rate,
+            ));*/
+            let cas9 = Box::new(Cas9WT::from_editing_rate(
+                editrate,
+                sites_per_barcode,
+                integrated_barcodes,
+                0.01,
+                "Cas9WT".to_string(),
+                &0.1,
+                &0.0,
             ));
             
             let simple_division = Box::new(SimpleDivision { offspring_count: 2 });
 
-            let mutators: Vec<Box<dyn CellFactory>> = vec![cas12a];
+            let mutators: Vec<Box<dyn CellFactory>> = cas9.into_iter().map(|x| {let xx : Box<dyn CellFactory> = Box::new(x); xx}).collect();
             let dividers: Vec<Box<dyn DivisionModel>>= vec![simple_division];
             
-            let genome = GenomeEventCollection::new();
+            let mut genome = GenomeEventCollection::new();
 
-            let mut simulation_results = run_simulation(&1, generations, &mutators, &dividers);
+            let mut simulation_results = run_simulation(&mut genome, &1, generations, &mutators, &dividers);
             
             // subsample cells that we're interested in the final generation
             let cell_ids: Vec<usize> = simulation_results.cells.iter().map(|c| c.id.clone()).collect();
@@ -312,13 +321,12 @@ pub struct SimulationResult {
 ///
 /// Prints progress to stdout showing generation number, cell count, and first cell ID
 /// for each generation.
-pub fn run_simulation(initial_cell_count: &usize,
+pub fn run_simulation(genome: &mut GenomeEventCollection,
+                      initial_cell_count: &usize,
                       generations: &usize,
                       cell_mutators: &Vec<Box<dyn CellFactory>>,
                       cell_dividers: &Vec<Box<dyn DivisionModel>>,
 ) -> SimulationResult {
-
-    let mut genome = GenomeEventCollection::new();
 
     let mut current_cells = vec![Cell::new(); *initial_cell_count];
 
@@ -344,7 +352,7 @@ pub fn run_simulation(initial_cell_count: &usize,
                 let mut new_daughters = vec![];
                 daughters.iter().for_each( |child_id| {
                     let mut child = child_id.clone();
-                    new_daughters.extend(divider.as_ref().mutate(&mut child, &mut genome).into_iter());
+                    new_daughters.extend(divider.as_ref().mutate(&mut child, genome).into_iter());
                 });
                 daughters = new_daughters;
             });
@@ -353,7 +361,7 @@ pub fn run_simulation(initial_cell_count: &usize,
                 let mut new_daughters = vec![];
                 daughters.iter().for_each( |child_id| {
                     let mut child = child_id.clone();
-                    new_daughters.extend(divider.as_ref().divide(&mut child, &mut genome).into_iter());
+                    new_daughters.extend(divider.as_ref().divide(&mut child, genome).into_iter());
                 });
                 daughters = new_daughters;
             });

@@ -475,7 +475,7 @@ impl CellFactory for Cas12aABE {
         let mut ret = Vec::new();
 
         let existing_events = genome
-            .filter_events_and_get_outcomes(&self.genome, &input_cell.events)
+            .filter_for_genome_and_matching_events(&self.genome, &input_cell.events)
             .iter()
             .map(|x| (x.start, x.clone()))
             .collect::<HashMap<u32, EditingOutcome>>();
