@@ -5,7 +5,6 @@ use bio::data_structures::interval_tree::{ArrayBackedIntervalTree, IntervalTree}
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use rand_distr::num_traits::ToPrimitive;
-use regex::internal::Input;
 use crate::cell::Cell;
 use crate::lineagemodels::model::CellFactory;
 use io::Write;

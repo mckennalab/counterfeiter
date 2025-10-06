@@ -1,13 +1,14 @@
+use crate::rand_distr::Distribution;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::atomic::{AtomicU16, Ordering};
-use rand::distributions::Distribution;
 use rand::Rng;
 use rand_distr::Poisson;
 use crate::cell::Cell;
 use crate::genome::{next_genome_id, DecayType, EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification, Probability};
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
 use crate::lineagemodels::model::{CellFactory, EventOutcomeIndex};
+
 
 #[derive(Clone, Debug)]
 pub struct Cas9WT {
