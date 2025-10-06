@@ -21,6 +21,30 @@ pub struct CRISPRBitRate {
 }
 
 impl CRISPRBitRate {
+    /// Creates a new CRISPR bit rate configuration with specified probabilities.
+    ///
+    /// Initializes a CRISPR editing model with four possible outcomes at each
+    /// target site. Uses weighted random sampling to select outcomes based on
+    /// the provided probabilities.
+    ///
+    /// # Arguments
+    ///
+    /// * `none` - Probability of no editing (wild-type)
+    /// * `left` - Probability of left-side editing only
+    /// * `right` - Probability of right-side editing only
+    /// * `both` - Probability of editing both sides
+    /// * `bind_modified_target` - Probability of re-editing previously modified targets
+    ///
+    /// # Returns
+    ///
+    /// A new `CRISPRBitRate` with configured probabilities and weighted sampler.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // 98% no edit, 1% each side, 0.02% both, 1% re-edit rate
+    /// let rates = CRISPRBitRate::new(0.98, 0.01, 0.01, 0.0002, 0.01);
+    /// ```
     pub fn new(none: f32, left: f32, right: f32, both: f32, bind_modified_target: f32) -> CRISPRBitRate {
         let weighted_draw = WalkerTableBuilder::new(&vec![none, left, right, both]).build();
         CRISPRBitRate { none, left, right, both, bind_modified_target, weighted_draw }
@@ -39,6 +63,32 @@ impl CRISPRBits {
     const RIGHT: EventOutcomeIndex = 2;
     const BOTH: EventOutcomeIndex = 3;
 
+    /// Creates a new CRISPR bits editing system.
+    ///
+    /// Initializes a CRISPR-based editing system with multiple barcode integrations
+    /// and target sites per integration. Each target site can have different
+    /// editing rates specified in the rates vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `int_count` - Number of barcode integrations in the system
+    /// * `targets_per_integration` - Number of target sites per integration
+    /// * `rates` - Vector of editing rates for each target site
+    ///
+    /// # Returns
+    ///
+    /// A new `CRISPRBits` editing system configured with the specified parameters.
+    ///
+    /// # Panics
+    ///
+    /// The rates vector length should match targets_per_integration for proper function.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let rates = vec![CRISPRBitRate::new(0.98, 0.01, 0.01, 0.0002, 0.01)];
+    /// let crispr_system = CRISPRBits::new(&5, &1, rates);
+    /// ```
     pub fn new(int_count: &usize, targets_per_integration: &usize, rates: Vec<CRISPRBitRate>) -> CRISPRBits {
         CRISPRBits {
             integration_count: *int_count,
@@ -67,6 +117,32 @@ impl CRISPRBits {
         }
     }
 
+    /// Generates a new editing event based on current state and position.
+    ///
+    /// Applies the CRISPR editing model to determine the new editing state
+    /// at a target site. The outcome depends on the current editing state
+    /// and the configured editing probabilities for the position.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_state` - Current editing state of the target site
+    /// * `position` - Position index for rate lookup
+    ///
+    /// # Returns
+    ///
+    /// New editing state after applying the editing model.
+    ///
+    /// # State Transition Rules
+    /// - NEITHER: Randomly select from all four outcomes
+    /// - BOTH: State is stable (no further editing)
+    /// - LEFT/RIGHT: May transition to BOTH based on re-editing probability
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let new_state = crispr_bits.draw_new_event(&CRISPRBits::NEITHER, &0);
+    /// // Returns one of: NEITHER, LEFT, RIGHT, or BOTH
+    /// ```
     fn draw_new_event(&self, current_state: &EventOutcomeIndex, position: &usize) -> EventOutcomeIndex {
         match current_state {
             &CRISPRBits::NEITHER => {
@@ -160,6 +236,25 @@ impl CRISPRBits {
         write!(out, "{};\n", CRISPRBits::recursive_tree_builder(parent_child_map, &0)).expect("Unable to write file");
     }
 
+    /// Recursively builds Newick tree representation for CRISPR bits system.
+    ///
+    /// Constructs a phylogenetic tree in Newick format by recursively
+    /// traversing parent-child relationships. This version doesn't filter
+    /// cells and includes all nodes in the tree structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_child_map` - Map from parent IDs to vectors of child IDs
+    /// * `current_index` - Current node ID being processed
+    ///
+    /// # Returns
+    ///
+    /// String representation of the subtree rooted at current_index.
+    ///
+    /// # Tree Format
+    /// - Internal nodes: `(child1,child2,...)`
+    /// - Leaf nodes: `nID`
+    /// - No branch lengths included in this implementation
     pub fn recursive_tree_builder(parent_child_map: &HashMap<usize, Vec<usize>>, current_index: &usize) -> String {
         match parent_child_map.contains_key(current_index) {
             true => {
