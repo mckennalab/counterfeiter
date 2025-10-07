@@ -6,7 +6,7 @@ use bio::data_structures::interval_tree::{ArrayBackedIntervalTree, IntervalTree}
 use std::sync::atomic::{AtomicU16, Ordering};
 use rand_distr::num_traits::ToPrimitive;
 use crate::cell::Cell;
-use crate::lineagemodels::model::CellFactory;
+use crate::lineagemodels::model::{CellFactory, DroppedAllele};
 use io::Write;
 use rand::{rng, Rng};
 
@@ -151,11 +151,20 @@ pub fn create_mix_file(
     let mut target_count = 0;
 
     cells.iter_mut().enumerate().for_each(|(index,cell)| {
+        let mut allele_count = 0;
+        println!("----=-=-=-=-=-=-=-=----- Cell id {}",cell.id);
         if cell_ids_to_keep.contains_key(&cell.id) {
-            ordered_editors.iter().for_each(|(genome)| {
-                match genome.to_mix_array(genomes, cell) {
+            ordered_editors.iter().enumerate().for_each(|(genome_index,genome)| {
+                let force_draw = allele_count == 0 && genome_index == ordered_editors.len() - 1;
+                let allele_draw = genome.to_mix_array(genomes, cell, &force_draw);
+                if allele_draw.0 == DroppedAllele::Sampled {
+                    allele_count += 1;
+                }
+                match allele_draw.1 {
                     Some(allele_seq) => {
+                        println!("alleles {}",String::from_utf8(allele_seq.clone()).unwrap());
                         cell_to_output.entry(cell.id).and_modify(|v| v.extend(allele_seq.clone())).or_insert(allele_seq.clone());
+                        println!("built alleles {}",String::from_utf8(cell_to_output.get(&cell.id).unwrap().clone()).unwrap());
                         if target_count < cell_to_output.get(&cell.id).unwrap().len() {
                             target_count = cell_to_output.get(&cell.id).unwrap().len();
                         }
@@ -178,7 +187,7 @@ pub fn create_mix_file(
     )
         .unwrap();
     cell_to_output.iter().for_each(|(k, v)| {
-        println!("CCCCCCCCCCCCCCC len {}",v.len());
+        println!("CCCCCCCCCCCCCCC len {}",String::from_utf8(v.clone()).unwrap());
         write!(
             out,
             "{:<10}\t{}\n",

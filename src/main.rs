@@ -171,10 +171,10 @@ fn main() {
                 integrated_barcodes,
                 0.01,
                 "Cas9WT".to_string(),
-                &0.1,
+                barcode_drop_rate,
                 &0.0,
             ));
-            
+            println!("Cas9 length {}",cas9.len());
             let simple_division = Box::new(SimpleDivision { offspring_count: 2 });
 
             let mutators: Vec<Box<dyn CellFactory>> = cas9.into_iter().map(|x| {let xx : Box<dyn CellFactory> = Box::new(x); xx}).collect();

@@ -1,6 +1,6 @@
 use crate::cell::Cell;
 use crate::genome::{GenomeDescription, GenomeEventCollection};
-use crate::lineagemodels::model::{CellFactory, EventOutcomeIndex};
+use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex};
 
 #[derive(Clone, Debug)]
 pub struct EcDNA {
@@ -17,7 +17,7 @@ impl CellFactory for EcDNA {
         todo!()
     }
 
-    fn to_mix_array(&self, genome: &GenomeEventCollection, input_cell: &mut Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&self, genome: &GenomeEventCollection, input_cell: &mut Cell, force_retention: &bool) -> (DroppedAllele,Option<Vec<u8>>) {
         todo!()
     }
 

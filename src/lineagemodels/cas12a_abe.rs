@@ -1,6 +1,6 @@
 use crate::cell::Cell;
 use crate::genome::{next_genome_id, DecayType, EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification, Probability};
-use crate::lineagemodels::model::{CellFactory, EventOutcomeIndex, EventPosition};
+use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex, EventPosition};
 use rand::prelude::*;
 use regex::{Match, Regex};
 use rustc_hash::FxHashMap;
@@ -470,8 +470,9 @@ impl CellFactory for Cas12aABE {
     fn to_mix_array(
         &self,
         genome: &GenomeEventCollection,
-        input_cell: &mut Cell,
-    ) -> Option<Vec<u8>> {
+        input_cell: &mut Cell, 
+        force_retention: &bool
+    ) -> (DroppedAllele,Option<Vec<u8>>) {
         let mut ret = Vec::new();
 
         let existing_events = genome
@@ -515,9 +516,9 @@ impl CellFactory for Cas12aABE {
         //println!("Ret {:?}",ret);
         if all_empty {
             input_cell.visible_in_output = false;
-            None
+            (DroppedAllele::Dropped,None)
         } else {
-            Some(ret)
+            (DroppedAllele::Sampled,Some(ret))
         }
     }
 

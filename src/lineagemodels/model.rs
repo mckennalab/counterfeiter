@@ -9,6 +9,12 @@ pub type EventPosition = u16;
 // our reserved mutational 'space'
 pub type EventOutcomeIndex = u16;
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DroppedAllele {
+    Sampled,
+    Dropped
+}
+
 /// Trait for implementing cellular editing systems and mutation models.
 ///
 /// This trait defines the interface for different editing technologies
@@ -51,7 +57,7 @@ pub trait CellFactory {
     ///
     /// * `Some(Vec<u8>)` - Binary array representing editing state
     /// * `None` - If cell should be excluded (e.g., all barcodes dropped)
-    fn to_mix_array(&self, genome: &GenomeEventCollection, input_cell: &mut Cell) -> Option<Vec<u8>>;
+    fn to_mix_array(&self, genome: &GenomeEventCollection, input_cell: &mut Cell, force_retention: &bool) -> (DroppedAllele,Option<Vec<u8>>);
 
     /// Maps an outcome index to its string representation.
     ///

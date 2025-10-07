@@ -14,7 +14,7 @@ use rand_distr::Poisson;
 use crate::cell::Cell;
 use crate::genome::{next_genome_id, DecayType, EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification, Probability};
 use crate::lineagemodels::cas12a_abe::Cas12aABE;
-use crate::lineagemodels::model::{CellFactory, EventOutcomeIndex};
+use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex};
 
 
 /// Cas9 wild-type editing system for lineage tracing.
@@ -130,7 +130,7 @@ impl Cas9WT {
                         drop_rate: Probability::new_from_f64(drop_rate).unwrap(),
                         id: next_genome_id(),
                     },
-                    interdependent_rate: 0.0,
+                    interdependent_rate: *interdependent_rate,
                 })
         }
         return_vec
@@ -297,7 +297,7 @@ impl CellFactory for Cas9WT {
         vec![input_cell.pure_clone()]
     }
 
-    fn to_mix_array(&self, genome_lookup_object: &GenomeEventCollection, input_cell: &mut Cell) -> Option<Vec<u8>> {
+    fn to_mix_array(&self, genome_lookup_object: &GenomeEventCollection, input_cell: &mut Cell, force_retention: &bool) -> (DroppedAllele,Option<Vec<u8>>) {
         let existing_events: &HashMap<u32,EditingOutcome> = match genome_lookup_object.genomes.get(&self.genome) {
             None => {
                 error!("genome does not exist {:?}, likely because we haven't edited that genome",&self.genome);
@@ -305,8 +305,11 @@ impl CellFactory for Cas9WT {
             }
             Some(x) => {x}
         };
-        if self.genome.drop_rate.get() > rand::rng().random::<f64>() {
-            Some(existing_events.iter().map(|(x, y)| b'?').collect())
+        println!("drop rate {}",self.genome.drop_rate.get());
+        let drawed = rand::rng().random::<f64>();
+        if drawed < self.genome.drop_rate.get() && !force_retention {
+            println!("dropping {}",drawed);
+            (DroppedAllele::Dropped,Some(existing_events.iter().map(|(x, y)| b'?').collect()))
         } else {
             println!("existing len {}", existing_events.len());
             let mut has_it = 0;
@@ -325,7 +328,7 @@ impl CellFactory for Cas9WT {
                 }
             }).collect::<Vec<u8>>();
             println!("ret {:?} has it {}", ret,has_it);
-            Some(ret)
+            (DroppedAllele::Sampled,Some(ret))
         }
     }
 
