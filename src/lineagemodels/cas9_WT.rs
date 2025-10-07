@@ -1,21 +1,22 @@
+use crate::cell::Cell;
+use crate::genome::{
+    next_genome_id, DecayType, EditingOutcome, Genome, GenomeDescription, GenomeEventCollection,
+    GenomeEventKey, Modification, Probability,
+};
+use crate::lineagemodels::cas12a_abe::Cas12aABE;
+use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex};
 /// Cas9 wild-type (WT) lineage tracing system implementation.
 ///
 /// This module implements a Cas9-based genome editing system that simulates
 /// wild-type Cas9 behavior for lineage tracing applications. Cas9 creates
 /// double-strand breaks that result in deletions and insertions through
 /// non-homologous end joining (NHEJ) repair.
-
 use crate::rand_distr::Distribution;
+use rand::{rng, Rng};
+use rand_distr::Poisson;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::atomic::{AtomicU16, Ordering};
-use rand::{rng, Rng};
-use rand_distr::Poisson;
-use crate::cell::Cell;
-use crate::genome::{next_genome_id, DecayType, EditingOutcome, Genome, GenomeDescription, GenomeEventCollection, GenomeEventKey, Modification, Probability};
-use crate::lineagemodels::cas12a_abe::Cas12aABE;
-use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex};
-
 
 /// Cas9 wild-type editing system for lineage tracing.
 ///
@@ -47,7 +48,6 @@ pub struct Cas9WT {
     interdependent_rate: f64,
 }
 
-
 /// Global atomic counter for unique editing event IDs.
 ///
 /// Used to assign unique identifiers to each editing outcome across all
@@ -65,7 +65,6 @@ static GLOBAL_ID: AtomicU16 = AtomicU16::new(1);
 pub fn next_editing_id() -> u16 {
     GLOBAL_ID.fetch_add(1, Ordering::Relaxed)
 }
-
 
 impl Cas9WT {
     /// Creates multiple Cas9WT instances with uniform editing rates.
@@ -107,31 +106,34 @@ impl Cas9WT {
     ) -> Vec<Cas9WT> {
         // our length is going to be the target: (count * 24) + 20 + 20
         let size = 40 + (*target_count * 24);
-        let cut_positions = (0..*target_count).map(|x| 20 + (x * 24) + 16).collect::<Vec<u32>>();
-        let edit_rate = (0..*target_count).map(|x| rate.clone()).collect::<Vec<f64>>();
+        let cut_positions = (0..*target_count)
+            .map(|x| 20 + (x * 24) + 16)
+            .collect::<Vec<u32>>();
+        let edit_rate = (0..*target_count)
+            .map(|x| rate.clone())
+            .collect::<Vec<f64>>();
         let edit_width = (0..*target_count).map(|x| 8.0f64).collect::<Vec<f64>>();
 
         let mut return_vec = Vec::new();
         for i in (0..*integration_count) {
-            return_vec.push(
-                Cas9WT {
-                    edit_rate: edit_rate.clone(),
-                    insertion_rate: insertion_rate.clone(),
-                    edit_width: edit_width.clone(),
-                    cut_positions: cut_positions.clone(),
-                    size: size,
-                    targets_per_barcode: *target_count,
-                    description: description.clone(),
-                    genome: GenomeDescription {
-                        genome: Genome::ABECas12a,
-                        name: description.clone(),
-                        allows_overlap: true,
-                        decay_type: DecayType::Permanent,
-                        drop_rate: Probability::new_from_f64(drop_rate).unwrap(),
-                        id: next_genome_id(),
-                    },
-                    interdependent_rate: *interdependent_rate,
-                })
+            return_vec.push(Cas9WT {
+                edit_rate: edit_rate.clone(),
+                insertion_rate: insertion_rate.clone(),
+                edit_width: edit_width.clone(),
+                cut_positions: cut_positions.clone(),
+                size: size,
+                targets_per_barcode: *target_count,
+                description: description.clone(),
+                genome: GenomeDescription {
+                    genome: Genome::ABECas12a,
+                    name: description.clone(),
+                    allows_overlap: true,
+                    decay_type: DecayType::Permanent,
+                    drop_rate: Probability::new_from_f64(drop_rate).unwrap(),
+                    id: next_genome_id(),
+                },
+                interdependent_rate: *interdependent_rate,
+            })
         }
         return_vec
     }
@@ -156,20 +158,36 @@ impl Cas9WT {
     ///
     /// Boolean vector of length `self.edit_rate.len()` where `true` indicates
     /// the target site is still active for editing
-    pub fn events_to_active_target_sites(&self, event_outcome_index: &Vec<GenomeEventKey>, genome: &mut GenomeEventCollection) -> Vec<bool> {
+    pub fn events_to_active_target_sites(
+        &self,
+        event_outcome_index: &Vec<GenomeEventKey>,
+        genome: &mut GenomeEventCollection,
+    ) -> Vec<bool> {
         let mut ret = vec![true; self.edit_rate.len()];
+        //println!("PRE  {:?}", ret);
+        
         event_outcome_index.iter().for_each(|x| {
             let mut hash: HashSet<GenomeEventKey> = HashSet::default();
             hash.insert(x.clone());
-            genome.filter_for_genome_and_matching_events(&self.genome, &hash).iter().for_each(|x| {
-                self.cut_positions.iter().enumerate().for_each(|(index, cutsite)| {
-                    if (x.start > *cutsite - 16 && x.start < *cutsite + 6) ||
-                        (x.stop > *cutsite - 16 && x.stop < *cutsite + 6) {
-                        ret[index] = false;
-                    }
+            genome
+                .filter_for_genome_and_matching_events(&self.genome, &hash)
+                .iter()
+                .for_each(|x| {
+                    println!("{:?}", x);
+                    self.cut_positions
+                        .iter()
+                        .enumerate()
+                        .for_each(|(index, cutsite)| {
+                            if (x.start > *cutsite - 16 && x.start < *cutsite + 6)
+                                || (x.stop > *cutsite - 16 && x.stop < *cutsite + 6)
+                                || (x.start < *cutsite - 16 && x.stop > *cutsite + 6)
+                            {
+                                ret[index] = false;
+                            }
+                        });
                 });
-            });
         });
+        //println!("POST {:?}", ret);
         ret
     }
 }
@@ -203,7 +221,7 @@ impl CellFactory for Cas9WT {
     /// Single-element vector containing the edited cell (1-to-1 conversion)
     fn mutate(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
         let current_events = input_cell.filter_to_genome_events(&self.genome.id);
-        
+
         let mut cut_start = self.size;
         let mut cut_end = 0;
         let mut event_drawn = false;
@@ -211,35 +229,62 @@ impl CellFactory for Cas9WT {
         let mut insertions: Vec<(u32, String)> = Vec::new();
 
         let active_targets = self.events_to_active_target_sites(&current_events, genome);
-        self.edit_rate.iter().zip(active_targets).enumerate().for_each(|(barcode_index, (barcode_edit_rate, active))| {
-            if active {
-                // draw an event with the proportion provided
-                // Draw a float between 0.0 and 1.0 (continuous uniform)
-                let rnd: f64 = rand::random::<f64>();
+        self.edit_rate
+            .iter()
+            .zip(active_targets)
+            .enumerate()
+            .for_each(|(target_index, (target_edit_rate, active))| {
+                if active {
+                    // draw an event with the proportion provided
+                    // Draw a float between 0.0 and 1.0 (continuous uniform)
+                    let rnd: f64 = rand::random::<f64>();
 
-                let cut_position = self.cut_positions.get(barcode_index).unwrap();
+                    let cut_position = self.cut_positions.get(target_index).unwrap();
 
-                if rnd < *barcode_edit_rate {
-                    let rnd2: f64 = rand::random::<f64>();
-                    if rnd2 < self.insertion_rate {
-                        let inserted_bases = random_nucleotides(Poisson::new(3.0f64).unwrap().sample(&mut rand::thread_rng()).round() as usize);
-                        insertions.push((*cut_position, inserted_bases));
-                        insertion_drawn = true;
-                    } else {
-                        let edit_start_offset = cut_position - Poisson::new(self.edit_width.get(barcode_index).unwrap().clone()).unwrap().sample(&mut rand::thread_rng()).round() as u32;
-                        let edit_stop_offset = cut_position + Poisson::new(self.edit_width.get(barcode_index).unwrap().clone()).unwrap().sample(&mut rand::thread_rng()).round() as u32;
-                        cut_start = cut_start.min(edit_start_offset);
-                        cut_end = cut_end.max(edit_stop_offset);
-                        event_drawn = true;
+                    //println!("rand {} edit rate {}", rnd, target_edit_rate);
+                    if rnd < *target_edit_rate {
+                        let rnd2: f64 = rand::random::<f64>();
+                        if rnd2 < self.insertion_rate {
+                            let inserted_bases = random_nucleotides(
+                                Poisson::new(3.0f64)
+                                    .unwrap()
+                                    .sample(&mut rand::thread_rng())
+                                    .round() as usize,
+                            );
+                            insertions.push((*cut_position, inserted_bases));
+                            insertion_drawn = true;
+                        } else {
+                            let edit_start_offset = cut_position
+                                - Poisson::new(self.edit_width.get(target_index).unwrap().clone())
+                                    .unwrap()
+                                    .sample(&mut rand::thread_rng())
+                                    .round() as u32;
+                            let edit_stop_offset = cut_position
+                                + Poisson::new(self.edit_width.get(target_index).unwrap().clone())
+                                    .unwrap()
+                                    .sample(&mut rand::thread_rng())
+                                    .round() as u32;
+                            cut_start = cut_start.min(edit_start_offset);
+                            cut_end = cut_end.max(edit_stop_offset);
+                            //println!(
+                            //    "del from {} to {}, new ends {} and {}",
+                            //    edit_start_offset, edit_stop_offset, cut_start, cut_end
+                            //);
+                            event_drawn = true;
+                        }
                     }
+                } else {
+                    //println!("inactive site {}", target_index);
                 }
-            }
-        });
+                //println!("END ------- {} {} ", cut_start, cut_end);
+            });
 
         if event_drawn || insertion_drawn {
-            println!("mutate {} {} genome {}",event_drawn,insertion_drawn,self.genome.id);
+            //println!("mutate {} {} genome {}",event_drawn,insertion_drawn,self.genome.id);
             match (event_drawn, insertion_drawn) {
-                (false, false) => { panic!("we had at least one event") }
+                (false, false) => {
+                    panic!("we had at least one event")
+                }
                 (true, false) => {
                     let outcome = EditingOutcome {
                         start: cut_start,
@@ -294,41 +339,70 @@ impl CellFactory for Cas9WT {
                 }
             }
         }
+
+        // now we have to purge any events we would have previously recorded that are in between the start and stop positions
+        let mut input_cell_new_events: HashSet<GenomeEventKey> = HashSet::new();
+        //println!("start {} stop {}",cut_start, cut_end);
+        input_cell.events.iter().for_each(|event| {
+            let event_details = genome.key_to_outcome.get(event).unwrap();
+            if (event_details.start > cut_end || event_details.stop < cut_start) ||
+                (event_details.start == cut_start && event_details.stop == cut_end + 1) {
+                input_cell_new_events.insert(event.clone());
+            } else {
+                //println!("droppeing event details {:?} {:?} {} {}", event, event_details, event_details.start == cut_start, event_details.stop == cut_end + 1);
+            }
+        });
+        input_cell.events = input_cell_new_events;
         vec![input_cell.pure_clone()]
     }
 
-    fn to_mix_array(&self, genome_lookup_object: &GenomeEventCollection, input_cell: &mut Cell, force_retention: &bool) -> (DroppedAllele,Option<Vec<u8>>) {
-        let existing_events: &HashMap<u32,EditingOutcome> = match genome_lookup_object.genomes.get(&self.genome) {
-            None => {
-                error!("genome does not exist {:?}, likely because we haven't edited that genome",&self.genome);
-                &HashMap::default()
-            }
-            Some(x) => {x}
-        };
-        println!("drop rate {}",self.genome.drop_rate.get());
+    fn to_mix_array(
+        &self,
+        genome_lookup_object: &GenomeEventCollection,
+        input_cell: &mut Cell,
+        force_retention: &bool,
+    ) -> (DroppedAllele, Option<Vec<u8>>) {
+        let existing_events: &HashMap<u32, EditingOutcome> =
+            match genome_lookup_object.genomes.get(&self.genome) {
+                None => {
+                    error!(
+                        "genome does not exist {:?}, likely because we haven't edited that genome",
+                        &self.genome
+                    );
+                    &HashMap::default()
+                }
+                Some(x) => x,
+            };
+        //println!("drop rate {}",self.genome.drop_rate.get());
         let drawed = rand::rng().random::<f64>();
         if drawed < self.genome.drop_rate.get() && !force_retention {
-            println!("dropping {}",drawed);
-            (DroppedAllele::Dropped,Some(existing_events.iter().map(|(x, y)| b'?').collect()))
+            //println!("dropping {}",drawed);
+            (
+                DroppedAllele::Dropped,
+                Some(existing_events.iter().map(|(x, y)| b'?').collect()),
+            )
         } else {
-            println!("existing len {}", existing_events.len());
+            //println!("existing len {}", existing_events.len());
             let mut has_it = 0;
-            let ret = existing_events.iter().map(|(x, y)| {
-                let mut has_event = false;
-                input_cell.events.iter().for_each(|cell_key| {
-                    if cell_key.outcome_index == y.internal_outcome_id {
-                        has_event = true;
+            let ret = existing_events
+                .iter()
+                .map(|(x, y)| {
+                    let mut has_event = false;
+                    input_cell.events.iter().for_each(|cell_key| {
+                        if cell_key.outcome_index == y.internal_outcome_id {
+                            has_event = true;
+                        }
+                    });
+                    if has_event {
+                        has_it += 1;
+                        b'1'
+                    } else {
+                        b'0'
                     }
-                });
-                if has_event {
-                    has_it += 1;
-                    b'1'
-                } else {
-                    b'0'
-                }
-            }).collect::<Vec<u8>>();
-            println!("ret {:?} has it {}", ret,has_it);
-            (DroppedAllele::Sampled,Some(ret))
+                })
+                .collect::<Vec<u8>>();
+            //println!("ret {:?} has it {}", ret,has_it);
+            (DroppedAllele::Sampled, Some(ret))
         }
     }
 
@@ -336,7 +410,6 @@ impl CellFactory for Cas9WT {
         todo!()
     }
 }
-
 
 fn random_nucleotides(length: usize) -> String {
     let nucleotides = ['A', 'C', 'G', 'T'];
@@ -349,8 +422,8 @@ fn random_nucleotides(length: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufWriter;
     use super::*;
+    use std::io::BufWriter;
 
     #[test]
     fn test_iterative_example() {}

@@ -152,7 +152,7 @@ pub fn create_mix_file(
 
     cells.iter_mut().enumerate().for_each(|(index,cell)| {
         let mut allele_count = 0;
-        println!("----=-=-=-=-=-=-=-=----- Cell id {}",cell.id);
+        //println!("----=-=-=-=-=-=-=-=----- Cell id {}",cell.id);
         if cell_ids_to_keep.contains_key(&cell.id) {
             ordered_editors.iter().enumerate().for_each(|(genome_index,genome)| {
                 let force_draw = allele_count == 0 && genome_index == ordered_editors.len() - 1;
@@ -162,9 +162,9 @@ pub fn create_mix_file(
                 }
                 match allele_draw.1 {
                     Some(allele_seq) => {
-                        println!("alleles {}",String::from_utf8(allele_seq.clone()).unwrap());
+                        //println!("alleles {}",String::from_utf8(allele_seq.clone()).unwrap());
                         cell_to_output.entry(cell.id).and_modify(|v| v.extend(allele_seq.clone())).or_insert(allele_seq.clone());
-                        println!("built alleles {}",String::from_utf8(cell_to_output.get(&cell.id).unwrap().clone()).unwrap());
+                        //println!("built alleles {}",String::from_utf8(cell_to_output.get(&cell.id).unwrap().clone()).unwrap());
                         if target_count < cell_to_output.get(&cell.id).unwrap().len() {
                             target_count = cell_to_output.get(&cell.id).unwrap().len();
                         }
@@ -187,7 +187,7 @@ pub fn create_mix_file(
     )
         .unwrap();
     cell_to_output.iter().for_each(|(k, v)| {
-        println!("CCCCCCCCCCCCCCC len {}",String::from_utf8(v.clone()).unwrap());
+        //println!("CCCCCCCCCCCCCCC len {}",String::from_utf8(v.clone()).unwrap());
         write!(
             out,
             "{:<10}\t{}\n",
@@ -201,9 +201,9 @@ pub fn create_mix_file(
 #[derive(Clone)]
 pub struct GenomeEventCollection {
     pub genomes: BTreeMap<GenomeDescription,HashMap<u32,EditingOutcome>>,
-    genomes_offsets: HashMap<GenomeDescription,u16>,
-    key_to_outcome: HashMap<GenomeEventKey,EditingOutcome>,
-    outcome_to_key: HashMap<EditingOutcome,GenomeEventKey>,
+    pub genomes_offsets: HashMap<GenomeDescription,u16>,
+    pub key_to_outcome: HashMap<GenomeEventKey,EditingOutcome>,
+    pub outcome_to_key: HashMap<EditingOutcome,GenomeEventKey>,
 }
 
 impl GenomeEventCollection {
