@@ -8,6 +8,7 @@ use rand_distr::num_traits::ToPrimitive;
 use crate::cell::Cell;
 use crate::lineagemodels::model::CellFactory;
 use io::Write;
+use rand::{rng, Rng};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Genome {
@@ -73,7 +74,7 @@ pub struct GenomeDescription {
     pub name: String,
     pub allows_overlap: bool,
     pub decay_type: DecayType,
-    pub drop_rate: Probability, 
+    pub drop_rate: Probability,
     pub id: u16,
 }
 
@@ -147,16 +148,14 @@ pub fn create_mix_file(
     output_file: &String,
 ) {
     let mut cell_to_output: HashMap<usize, Vec<u8>> = HashMap::new();
-    let mut target_count = 0; 
-    
+    let mut target_count = 0;
+
     cells.iter_mut().enumerate().for_each(|(index,cell)| {
         if cell_ids_to_keep.contains_key(&cell.id) {
             ordered_editors.iter().for_each(|(genome)| {
                 match genome.to_mix_array(genomes, cell) {
-                    Some(x) => {
-                        println!("x {:?} {}",x, cell_to_output.contains_key(&cell.id));
-                        cell_to_output.entry(cell.id).and_modify(|v| v.extend(x)).or_insert(vec![]);
-                        println!("TTTT {}",cell_to_output.get(&cell.id).unwrap().len());
+                    Some(allele_seq) => {
+                        cell_to_output.entry(cell.id).and_modify(|v| v.extend(allele_seq.clone())).or_insert(allele_seq.clone());
                         if target_count < cell_to_output.get(&cell.id).unwrap().len() {
                             target_count = cell_to_output.get(&cell.id).unwrap().len();
                         }
@@ -372,7 +371,7 @@ impl GenomeEventCollection {
             }
         }
     }
-    
+
 }
 
 
