@@ -181,31 +181,36 @@ pub fn create_mix_file(
         .enumerate()
         .for_each(|(genome_index, gn)| {
             let desc = gn.get_description();
-            let gm = genomes.genomes.get(desc).unwrap();
-            let max_key = gm.keys().max().unwrap();
-            let mut seen_index = 0;
-            (0..*max_key+1).for_each(|x| match gm.contains_key(&x) {
-                true => {
-                    let ki = gm.get(&x).unwrap();
-                    let mut nuc_string = String::from_utf8(ki.nucleotides.clone()).unwrap();
-                    if nuc_string.len() == 0 {
-                        nuc_string = "NONE".to_string();
-                    }
-                    write!(
-                        allele_mapping_output_file_out,
-                        "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                        desc.id,
-                        seen_index,
-                        ki.start,
-                        ki.stop,
-                        ki.change.to_string(),
-                        nuc_string,
-                        ki.internal_outcome_id
-                    ).unwrap();
-                    seen_index += 1;
+            let gm2 = genomes.genomes.get(desc);
+            match gm2 {
+                None => {},
+                Some(gm) => {
+                    let max_key = gm.keys().max().unwrap();
+                    let mut seen_index = 0;
+                    (0..*max_key+1).for_each(|x| match gm.contains_key(&x) {
+                        true => {
+                            let ki = gm.get(&x).unwrap();
+                            let mut nuc_string = String::from_utf8(ki.nucleotides.clone()).unwrap();
+                            if nuc_string.len() == 0 {
+                                nuc_string = "NONE".to_string();
+                            }
+                            write!(
+                                allele_mapping_output_file_out,
+                                "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                                desc.id,
+                                seen_index,
+                                ki.start,
+                                ki.stop,
+                                ki.change.to_string(),
+                                nuc_string,
+                                ki.internal_outcome_id
+                            ).unwrap();
+                            seen_index += 1;
+                        }
+                        false => {}
+                    });
                 }
-                false => {}
-            });
+            }
         });
     allele_mapping_output_file_out.flush().unwrap();
 
