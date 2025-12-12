@@ -441,6 +441,10 @@ impl Cas12aABE {
 }
 
 impl CellFactory for Cas12aABE {
+
+    fn get_description(&self) -> &GenomeDescription {
+        return &self.genome;
+    }
     fn mutate(&self, input_cell: &mut Cell, genome: &mut GenomeEventCollection) -> Vec<Cell> {
         &self
             .edit_rate

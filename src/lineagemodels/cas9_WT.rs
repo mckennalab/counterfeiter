@@ -14,7 +14,7 @@ use crate::lineagemodels::model::{CellFactory, DroppedAllele, EventOutcomeIndex}
 use crate::rand_distr::Distribution;
 use rand::{rng, Rng};
 use rand_distr::Poisson;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -362,17 +362,18 @@ impl CellFactory for Cas9WT {
         input_cell: &mut Cell,
         force_retention: &bool,
     ) -> (DroppedAllele, Option<Vec<u8>>) {
-        let existing_events: &HashMap<u32, EditingOutcome> =
+        let existing_events: &BTreeMap<u32, EditingOutcome> =
             match genome_lookup_object.genomes.get(&self.genome) {
                 None => {
                     error!(
                         "genome does not exist {:?}, likely because we haven't edited that genome",
                         &self.genome
                     );
-                    &HashMap::default()
+                    &BTreeMap::default()
                 }
                 Some(x) => x,
             };
+
         //println!("drop rate {}",self.genome.drop_rate.get());
         let drawed = rand::rng().random::<f64>();
         if drawed < self.genome.drop_rate.get() && !force_retention {
@@ -408,6 +409,10 @@ impl CellFactory for Cas9WT {
 
     fn get_mapping(&self, index: &EventOutcomeIndex) -> String {
         todo!()
+    }
+
+    fn get_description(&self) -> &GenomeDescription {
+        return &self.genome;
     }
 }
 

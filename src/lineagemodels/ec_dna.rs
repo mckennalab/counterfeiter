@@ -25,4 +25,7 @@ impl CellFactory for EcDNA {
         todo!()
     }
 
+    fn get_description(&self) -> &GenomeDescription {
+        return &self.genome;
+    }
 }

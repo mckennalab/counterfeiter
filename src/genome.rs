@@ -1,14 +1,14 @@
+use bio::data_structures::interval_tree::{ArrayBackedIntervalTree, IntervalTree};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io;
-use bio::data_structures::interval_tree::{ArrayBackedIntervalTree, IntervalTree};
 
-use std::sync::atomic::{AtomicU16, Ordering};
-use rand_distr::num_traits::ToPrimitive;
 use crate::cell::Cell;
 use crate::lineagemodels::model::{CellFactory, DroppedAllele};
 use io::Write;
 use rand::{rng, Rng};
+use rand_distr::num_traits::ToPrimitive;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Genome {
@@ -47,7 +47,9 @@ impl Probability {
 
     pub fn new_from_f64(value: &f64) -> Option<Self> {
         if value >= &0.0 && value <= &1.0 {
-            Some(Probability((*value * Probability::MAX.to_f64().unwrap()).round() as u64))
+            Some(Probability(
+                (*value * Probability::MAX.to_f64().unwrap()).round() as u64,
+            ))
         } else {
             None
         }
@@ -58,17 +60,19 @@ impl Probability {
     }
 }
 
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GenomeID(u16);
 
 impl GenomeID {
-    pub fn new() -> u16 { next_genome_id() }
-    pub fn get(self) -> u16 { self.0 }
+    pub fn new() -> u16 {
+        next_genome_id()
+    }
+    pub fn get(self) -> u16 {
+        self.0
+    }
 }
 
-
-#[derive(Debug, PartialEq, Eq, Hash,  Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GenomeDescription {
     pub genome: Genome,
     pub name: String,
@@ -104,7 +108,14 @@ pub enum Modification {
     Substitution,
     Insertion,
     Deletion,
-    Inversion
+    Inversion,
+}
+use std::fmt;
+
+impl fmt::Display for Modification {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -115,7 +126,6 @@ pub struct EditingOutcome {
     pub nucleotides: Vec<u8>,
     pub internal_outcome_id: u16,
 }
-
 
 /// Generates MIX format output file from cell population.
 ///
@@ -146,46 +156,98 @@ pub fn create_mix_file(
     cells: &mut Vec<Cell>,
     cell_ids_to_keep: &mut HashMap<usize, bool>,
     output_file: &String,
+    allele_mapping_output_file: &String,
 ) {
+    /*
+
+    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    pub struct EditingOutcome {
+        pub start: u32,
+        pub stop: u32,
+        pub change: Modification,
+        pub nucleotides: Vec<u8>,
+        pub internal_outcome_id: u16,
+    }
+    */
+    // write out each of the alleles to a master table
+    let mut allele_mapping_output_file_out = File::create(allele_mapping_output_file).unwrap();
+    write!(
+        allele_mapping_output_file_out,
+        "genome_id\tcolumn\tstart\tstop\tchange\tnucleotides\tinternal_outcome_id\n"
+    );
+
+    ordered_editors
+        .iter()
+        .enumerate()
+        .for_each(|(genome_index, gn)| {
+            let desc = gn.get_description();
+            let gm = genomes.genomes.get(desc).unwrap();
+            let max_key = gm.keys().max().unwrap();
+            let mut seen_index = 0;
+            (0..*max_key+1).for_each(|x| match gm.contains_key(&x) {
+                true => {
+                    let ki = gm.get(&x).unwrap();
+                    let mut nuc_string = String::from_utf8(ki.nucleotides.clone()).unwrap();
+                    if nuc_string.len() == 0 {
+                        nuc_string = "NONE".to_string();
+                    }
+                    write!(
+                        allele_mapping_output_file_out,
+                        "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                        desc.id,
+                        seen_index,
+                        ki.start,
+                        ki.stop,
+                        ki.change.to_string(),
+                        nuc_string,
+                        ki.internal_outcome_id
+                    ).unwrap();
+                    seen_index += 1;
+                }
+                false => {}
+            });
+        });
+    allele_mapping_output_file_out.flush().unwrap();
+
     let mut cell_to_output: HashMap<usize, Vec<u8>> = HashMap::new();
     let mut target_count = 0;
 
-    cells.iter_mut().enumerate().for_each(|(index,cell)| {
+    cells.iter_mut().enumerate().for_each(|(index, cell)| {
         let mut allele_count = 0;
         //println!("----=-=-=-=-=-=-=-=----- Cell id {}",cell.id);
         if cell_ids_to_keep.contains_key(&cell.id) {
-            ordered_editors.iter().enumerate().for_each(|(genome_index,genome)| {
-                let force_draw = allele_count == 0 && genome_index == ordered_editors.len() - 1;
-                let allele_draw = genome.to_mix_array(genomes, cell, &force_draw);
-                if allele_draw.0 == DroppedAllele::Sampled {
-                    allele_count += 1;
-                }
-                match allele_draw.1 {
-                    Some(allele_seq) => {
-                        //println!("alleles {}",String::from_utf8(allele_seq.clone()).unwrap());
-                        cell_to_output.entry(cell.id).and_modify(|v| v.extend(allele_seq.clone())).or_insert(allele_seq.clone());
-                        //println!("built alleles {}",String::from_utf8(cell_to_output.get(&cell.id).unwrap().clone()).unwrap());
-                        if target_count < cell_to_output.get(&cell.id).unwrap().len() {
-                            target_count = cell_to_output.get(&cell.id).unwrap().len();
+            ordered_editors
+                .iter()
+                .enumerate()
+                .for_each(|(genome_index, gn)| {
+                    let force_draw = allele_count == 0 && genome_index == ordered_editors.len() - 1;
+                    let allele_draw = gn.to_mix_array(genomes, cell, &force_draw);
+                    if allele_draw.0 == DroppedAllele::Sampled {
+                        allele_count += 1;
+                    }
+                    match allele_draw.1 {
+                        Some(allele_seq) => {
+                            //println!("alleles {}",String::from_utf8(allele_seq.clone()).unwrap());
+                            cell_to_output
+                                .entry(cell.id)
+                                .and_modify(|v| v.extend(allele_seq.clone()))
+                                .or_insert(allele_seq.clone());
+                            //println!("built alleles {}",String::from_utf8(cell_to_output.get(&cell.id).unwrap().clone()).unwrap());
+                            if target_count < cell_to_output.get(&cell.id).unwrap().len() {
+                                target_count = cell_to_output.get(&cell.id).unwrap().len();
+                            }
+                        }
+                        None => {
+                            error!("Unable to process cell {}", cell.id);
+                            cell_ids_to_keep.remove(&cell.id);
                         }
                     }
-                    None => {
-                        error!("Unable to process cell {}",cell.id);
-                        cell_ids_to_keep.remove(&cell.id);
-                    }
-                }
-            });
+                });
         }
     });
 
     let mut out = File::create(output_file).unwrap();
-    write!(
-        out,
-        "\t{}\t{}\n",
-        cell_to_output.len(),
-        target_count
-    )
-        .unwrap();
+    write!(out, "\t{}\t{}\n", cell_to_output.len(), target_count).unwrap();
     cell_to_output.iter().for_each(|(k, v)| {
         //println!("CCCCCCCCCCCCCCC len {}",String::from_utf8(v.clone()).unwrap());
         write!(
@@ -197,13 +259,12 @@ pub fn create_mix_file(
     });
 }
 
-
 #[derive(Clone)]
 pub struct GenomeEventCollection {
-    pub genomes: BTreeMap<GenomeDescription,HashMap<u32,EditingOutcome>>,
-    pub genomes_offsets: HashMap<GenomeDescription,u16>,
-    pub key_to_outcome: HashMap<GenomeEventKey,EditingOutcome>,
-    pub outcome_to_key: HashMap<EditingOutcome,GenomeEventKey>,
+    pub genomes: BTreeMap<GenomeDescription, BTreeMap<u32, EditingOutcome>>,
+    pub genomes_offsets: HashMap<GenomeDescription, u16>,
+    pub key_to_outcome: HashMap<GenomeEventKey, EditingOutcome>,
+    pub outcome_to_key: HashMap<EditingOutcome, GenomeEventKey>,
 }
 
 impl GenomeEventCollection {
@@ -227,11 +288,12 @@ impl GenomeEventCollection {
     /// assert_eq!(genome_events.current_genome_offset, 0);
     /// ```
     pub fn new() -> GenomeEventCollection {
-        GenomeEventCollection{
+        GenomeEventCollection {
             genomes: BTreeMap::default(),
             genomes_offsets: HashMap::new(),
             key_to_outcome: HashMap::new(),
-            outcome_to_key: HashMap::new() }
+            outcome_to_key: HashMap::new(),
+        }
     }
 
     /// Creates a compact event key for a given genome and editing outcome.
@@ -255,9 +317,12 @@ impl GenomeEventCollection {
     /// # Panics
     ///
     /// Panics if the genome has not been registered in `genomes_offsets`.
-    fn create_event(&mut self, genome: &GenomeDescription, outcome: &EditingOutcome) -> GenomeEventKey {
-
-        GenomeEventKey{
+    fn create_event(
+        &mut self,
+        genome: &GenomeDescription,
+        outcome: &EditingOutcome,
+    ) -> GenomeEventKey {
+        GenomeEventKey {
             position_index: outcome.start.clone(),
             genome_index: *self.genomes_offsets.get(genome).unwrap(),
             outcome_index: outcome.internal_outcome_id.clone(),
@@ -283,32 +348,34 @@ impl GenomeEventCollection {
     /// # Panics
     ///
     /// Panics if an event key in the set is not found in the collection.
-    pub fn filter_for_genome_and_matching_events(&self, genome: &GenomeDescription, set: &HashSet<GenomeEventKey>) -> Vec<EditingOutcome> {
+    pub fn filter_for_genome_and_matching_events(
+        &self,
+        genome: &GenomeDescription,
+        set: &HashSet<GenomeEventKey>,
+    ) -> Vec<EditingOutcome> {
         if !self.genomes_offsets.contains_key(genome) {
-            warn!("Unable to find genome {} {:?}",genome.id, self.genomes_offsets.len());
+            warn!(
+                "Unable to find genome {} {:?}",
+                genome.id,
+                self.genomes_offsets.len()
+            );
             Vec::new()
         } else {
             let genome_offset = self.genomes_offsets.get(genome).unwrap();
-            set.iter().map(|it| {
-                match self.key_to_outcome.get(it) {
+            set.iter()
+                .map(|it| match self.key_to_outcome.get(it) {
                     None => {
                         panic!("We dont know about event {:?}", it);
                     }
-                    Some(x) => {
-                        match *genome_offset == it.genome_index {
-                            true => {
-                                Some(x.clone())
-                            }
-                            false => {
-                                None
-                            }
-                        }
-                    }
-                }
-            }).flatten().collect::<Vec<EditingOutcome>>()
+                    Some(x) => match *genome_offset == it.genome_index {
+                        true => Some(x.clone()),
+                        false => None,
+                    },
+                })
+                .flatten()
+                .collect::<Vec<EditingOutcome>>()
         }
     }
-
 
     /// Adds a new editing event to the collection.
     ///
@@ -340,18 +407,21 @@ impl GenomeEventCollection {
     /// let outcome = EditingOutcome { /* ... */ };
     /// let key = collection.add_event(&genome_desc, outcome);
     /// ```
-    pub fn add_event(&mut self, genome: &GenomeDescription, outcome: EditingOutcome) -> Option<GenomeEventKey> {
-
+    pub fn add_event(
+        &mut self,
+        genome: &GenomeDescription,
+        outcome: EditingOutcome,
+    ) -> Option<GenomeEventKey> {
         match self.genomes.contains_key(genome) {
             false => {
                 // we dont have a record of this genome -- set it up and add the new outcome
-                let mut lt = HashMap::new();
+                let mut lt = BTreeMap::new();
                 lt.insert(outcome.start, outcome.clone());
                 self.genomes.insert(genome.clone(), lt);
-                println!("adding to find key {:?} {:?}",genome,outcome);
+                println!("adding to find key {:?} {:?}", genome, outcome);
 
                 self.genomes_offsets.insert(genome.clone(), genome.id);
-                let id = self.create_event(genome,&outcome);
+                let id = self.create_event(genome, &outcome);
 
                 self.key_to_outcome.insert(id.clone(), outcome.clone());
                 self.outcome_to_key.insert(outcome.clone(), id.clone());
@@ -359,28 +429,31 @@ impl GenomeEventCollection {
             }
             true => {
                 // we have a record -- check (1) for overlap and (2) if we allow that.
-                let id = self.create_event(genome,&outcome);
-                println!("adding to prev key {:?} {:?} {:?}",id,genome,outcome);
+                let id = self.create_event(genome, &outcome);
+                println!("adding to prev key {:?} {:?} {:?}", id, genome, outcome);
                 self.key_to_outcome.insert(id.clone(), outcome.clone());
                 self.outcome_to_key.insert(outcome.clone(), id.clone());
 
-                match self.genomes.get(genome).unwrap().contains_key(&outcome.start) {
+                match self
+                    .genomes
+                    .get(genome)
+                    .unwrap()
+                    .contains_key(&outcome.start)
+                {
                     false => {
-                        self.genomes.get_mut(genome).unwrap().insert(outcome.start,outcome.clone());
-                        let id = self.create_event(genome,&outcome);
+                        self.genomes
+                            .get_mut(genome)
+                            .unwrap()
+                            .insert(outcome.start, outcome.clone());
+                        let id = self.create_event(genome, &outcome);
 
                         self.key_to_outcome.insert(id.clone(), outcome.clone());
                         self.outcome_to_key.insert(outcome.clone(), id.clone());
                         Some(id)
-                    },
-                    true => {
-                        Some(self.outcome_to_key.get(&outcome).unwrap().clone())
                     }
+                    true => Some(self.outcome_to_key.get(&outcome).unwrap().clone()),
                 }
             }
         }
     }
-
 }
-
-

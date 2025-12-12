@@ -191,7 +191,10 @@ fn main() {
             simulation_results.cell_generations.insert(*generations, simulation_results.cells.iter().map(|x| x.pure_clone()).collect::<Vec<Cell>>());
 
             println!("generating mix input file");
-            create_mix_file(&genome, &mutators, &mut simulation_results.cells, &mut cell_ids_to_keep, output_mix);
+            let mut allele_out = output_mix.clone();
+            allele_out.push_str(".mapping");
+
+            create_mix_file(&genome, &mutators, &mut simulation_results.cells, &mut cell_ids_to_keep, output_mix, &allele_out);
 
             println!("generating tree file");
             Cas12aABE::to_newick_tree(&simulation_results.cells, &simulation_results.parent_child_map, &cell_ids_to_keep, &(*output_tree).to_string());

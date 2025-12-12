@@ -1,5 +1,5 @@
 use crate::cell::Cell;
-use crate::genome::GenomeEventCollection;
+use crate::genome::{GenomeDescription, GenomeEventCollection};
 use rand_distr::{Poisson, Distribution};
 use rand_distr::num_traits::ToPrimitive;
 
@@ -72,6 +72,8 @@ pub trait CellFactory {
     ///
     /// String representation of the outcome (e.g., "0", "1", "deletion").
     fn get_mapping(&self, index: &EventOutcomeIndex) -> String;
+    
+    fn get_description(&self) -> &GenomeDescription;
 
 }
 
