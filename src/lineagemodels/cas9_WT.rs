@@ -112,7 +112,7 @@ impl Cas9WT {
         let edit_rate = (0..*target_count)
             .map(|x| rate.clone())
             .collect::<Vec<f64>>();
-        let edit_width = (0..*target_count).map(|x| 8.0f64).collect::<Vec<f64>>();
+        let edit_width = (0..*target_count).map(|x| 2.0f64).collect::<Vec<f64>>();
 
         let mut return_vec = Vec::new();
         for i in (0..*integration_count) {
